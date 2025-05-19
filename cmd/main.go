@@ -14,6 +14,7 @@ import (
 	"aidanwoods.dev/go-paseto"
 	httpPb "github.com/10664kls/automatic-finance-api/genproto/go/http/v1"
 	"github.com/10664kls/automatic-finance-api/internal/auth"
+	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/middleware"
 	"github.com/10664kls/automatic-finance-api/internal/server"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -79,7 +80,15 @@ func run() error {
 		return fmt.Errorf("failed to create auth service: %w", err)
 	}
 
-	authSvc.Profile(ctx)
+	zlog.Info("Auth service initialized")
+
+	// Initialize the currency service
+	currencySvc, err := currency.NewService(ctx, db, zlog)
+	if err != nil {
+		return fmt.Errorf("failed to create currency service: %w", err)
+	}
+
+	zlog.Info("Currency service initialized")
 
 	e := echo.New()
 	e.HideBanner = true
@@ -95,7 +104,7 @@ func run() error {
 		middleware.SetContextClaimsFromToken,
 	}
 
-	serve := must(server.NewServer(authSvc))
+	serve := must(server.NewServer(authSvc, currencySvc))
 	if err := serve.Install(e, mdw...); err != nil {
 		return fmt.Errorf("failed to install auth service: %w", err)
 	}
