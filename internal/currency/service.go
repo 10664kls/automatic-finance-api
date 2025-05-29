@@ -134,6 +134,27 @@ func (s *Service) GetCurrencyByID(ctx context.Context, id string) (*Currency, er
 	return currency, nil
 }
 
+func (s *Service) GetCurrencyByCode(ctx context.Context, code string) (*Currency, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Method", "GetCurrencyByCode"),
+		zap.String("Username", claims.Username),
+	)
+
+	currency, err := getCurrency(ctx, s.db, &Query{
+		Code: code,
+	})
+	if errors.Is(err, ErrCurrencyNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this currency or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get currency", zap.Error(err))
+		return nil, err
+	}
+
+	return currency, nil
+}
+
 type ListCurrenciesResult struct {
 	Currencies    []*Currency `json:"currencies"`
 	NextPageToken string      `json:"nextPageToken"`
@@ -213,7 +234,6 @@ func (q *Query) ToSql() (string, []any, error) {
 	if q.PageToken != "" {
 		cursor, err := pager.DecodeCursor(q.PageToken)
 		if err == nil {
-			fmt.Println("TIME: ", cursor.Time)
 			and = append(and, sq.Lt{"created_at": cursor.Time})
 		}
 	}
@@ -375,7 +395,7 @@ func (r *CreateReq) Validate() error {
 		})
 	}
 
-	if r.ExchangeRate.LessThan(decimal.NewFromInt(0)) {
+	if r.ExchangeRate.LessThan(decimal.Zero) {
 		violations = append(violations, &edPb.BadRequest_FieldViolation{
 			Field:       "exchangeRate",
 			Description: "Exchange rate must be greater than zero",
@@ -419,7 +439,7 @@ func (r *ExchangeRateReq) Validate() error {
 		})
 	}
 
-	if r.ExchangeRate.LessThan(decimal.NewFromInt(0)) {
+	if r.ExchangeRate.LessThan(decimal.Zero) {
 		violations = append(violations, &edPb.BadRequest_FieldViolation{
 			Field:       "exchangeRate",
 			Description: "Exchange rate must be greater than zero",
