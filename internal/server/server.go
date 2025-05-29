@@ -6,29 +6,35 @@ import (
 
 	"github.com/10664kls/automatic-finance-api/internal/auth"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
+	"github.com/10664kls/automatic-finance-api/internal/income"
 	"github.com/labstack/echo/v4"
 	edPb "google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	rpcStatus "google.golang.org/grpc/status"
 )
 
 type Server struct {
 	auth     *auth.Auth
 	currency *currency.Service
+	income   *income.Service
 }
 
-func NewServer(auth *auth.Auth, currency *currency.Service) (*Server, error) {
+func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Service) (*Server, error) {
 	if auth == nil {
 		return nil, errors.New("auth service is nil")
 	}
-
 	if currency == nil {
 		return nil, errors.New("currency service is nil")
+	}
+	if income == nil {
+		return nil, errors.New("income service is nil")
 	}
 
 	return &Server{
 		auth:     auth,
 		currency: currency,
+		income:   income,
 	}, nil
 }
 
@@ -57,6 +63,16 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.GET("/currencies/:id", s.getCurrencyByID, mws...)
 	v1.GET("/currencies", s.listCurrencies, mws...)
 	v1.PATCH("/currencies/:id", s.updateCurrencyExchangeRate, mws...)
+
+	v1.POST("/files/statements", s.uploadStatement, mws...)
+	v1.GET("/files/statements/:name", s.downloadStatement, mws...)
+
+	v1.POST("/incomes/calculations", s.calculateIncome, mws...)
+	v1.GET("/incomes/calculations", s.listIncomeCalculations, mws...)
+	v1.GET("/incomes/calculations/:number", s.getIncomeCalculationByNumber, mws...)
+	v1.PUT("/incomes/calculations/:number", s.recalculateIncome, mws...)
+
+	v1.GET("/incomes/wordlists", s.listIncomeWordlists, mws...)
 
 	return nil
 }
@@ -299,4 +315,122 @@ func (s *Server) getCurrencyByID(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{
 		"currency": currency,
 	})
+}
+
+func (s *Server) uploadStatement(c echo.Context) error {
+	f, err := c.FormFile("file")
+	if errors.Is(err, http.ErrMissingFile) {
+		st, _ := status.New(codes.InvalidArgument, "File must not be empty.").
+			WithDetails(&edPb.BadRequest{
+				FieldViolations: []*edPb.BadRequest_FieldViolation{
+					{
+						Field:       "file",
+						Description: "File must not be empty.",
+					},
+				},
+			})
+		return st.Err()
+	}
+	if err != nil {
+		return err
+	}
+
+	src, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	ctx := c.Request().Context()
+	sf, err := s.income.UploadStatement(ctx, &income.FileStatementReq{
+		ReadSeeker:   src,
+		OriginalName: f.Filename,
+	})
+	if err != nil {
+		return err
+	}
+
+	sf.PublicURL = s.income.SignedURL(ctx, sf)
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"metadata": sf,
+	})
+}
+
+func (s *Server) downloadStatement(c echo.Context) error {
+	name, signature := c.Param("name"), c.QueryParam("signature")
+	f, err := s.income.GetStatement(c.Request().Context(), name, signature)
+	if err != nil {
+		return err
+	}
+	return c.Inline(f.Location, f.Name)
+}
+
+func (s *Server) calculateIncome(c echo.Context) error {
+	req := new(income.CalculateReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	calculation, err := s.income.CalculateIncome(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) listIncomeCalculations(c echo.Context) error {
+	req := new(income.CalculationQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	calculations, err := s.income.ListCalculations(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, calculations)
+}
+
+func (s *Server) getIncomeCalculationByNumber(c echo.Context) error {
+	calculation, err := s.income.GetCalculationByNumber(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) recalculateIncome(c echo.Context) error {
+	req := new(income.RecalculateReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	salaries, err := s.income.ReCalculateIncome(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, salaries)
+}
+
+func (s *Server) listIncomeWordlists(c echo.Context) error {
+	req := new(income.WordlistQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	wordlists, err := s.income.ListWordlists(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, wordlists)
 }
