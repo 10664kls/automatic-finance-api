@@ -15,6 +15,7 @@ import (
 	httpPb "github.com/10664kls/automatic-finance-api/genproto/go/http/v1"
 	"github.com/10664kls/automatic-finance-api/internal/auth"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
+	"github.com/10664kls/automatic-finance-api/internal/income"
 	"github.com/10664kls/automatic-finance-api/internal/middleware"
 	"github.com/10664kls/automatic-finance-api/internal/server"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -90,6 +91,14 @@ func run() error {
 
 	zlog.Info("Currency service initialized")
 
+	// Initialize the income service
+	incomeSvc, err := income.NewService(ctx, db, currencySvc, zlog)
+	if err != nil {
+		return fmt.Errorf("failed to create income service: %w", err)
+	}
+
+	zlog.Info("Income service initialized")
+
 	e := echo.New()
 	e.HideBanner = true
 	e.HTTPErrorHandler = httpErr
@@ -104,7 +113,7 @@ func run() error {
 		middleware.SetContextClaimsFromToken,
 	}
 
-	serve := must(server.NewServer(authSvc, currencySvc))
+	serve := must(server.NewServer(authSvc, currencySvc, incomeSvc))
 	if err := serve.Install(e, mdw...); err != nil {
 		return fmt.Errorf("failed to install auth service: %w", err)
 	}
@@ -254,13 +263,9 @@ func httpErr(err error, c echo.Context) {
 		return
 	}
 
-	c.JSON(http.StatusInternalServerError, httpPb.Error{
-		Error: &httpPb.Status{
-			Code:    int32(codes.Internal),
-			Message: "An internal server error occurred!",
-			Status:  code.Code(codes.Internal),
-		},
-	})
+	hpb := httpStatusPbFromRPC(status.New(codes.Internal, "An internal server error occurred!"))
+	jsonb, _ := protojson.Marshal(hpb)
+	c.JSONBlob(int(hpb.Error.Code), jsonb)
 }
 
 func httpStatusPbFromRPC(s *status.Status) *httpPb.Error {
