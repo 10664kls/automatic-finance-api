@@ -1,0 +1,1 @@
+DROP TABLE "user", currency, currency_updated_history, statement_file, statement_file_analysis, income_wordlist;
