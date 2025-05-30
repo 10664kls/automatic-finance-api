@@ -84,6 +84,7 @@ func matchWordlists(target string, wordlists []*Wordlist) (source, string, bool)
 				t = strings.TrimSpace(t)
 				ts := strings.SplitSeq(t, " ")
 				for v := range ts {
+					v = strings.TrimSpace(v)
 					if strings.EqualFold(v, strings.ToLower(w.Word)) {
 						return w.Category, w.Word, true
 					}
