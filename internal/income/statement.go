@@ -77,15 +77,8 @@ func (s *Service) UploadStatement(ctx context.Context, in *FileStatementReq) (*S
 		return nil, err
 	}
 
-	exePath, err := os.Executable()
-	if err != nil {
-		zlog.Error("failed to get executable path", zap.Error(err))
-		return nil, err
-	}
-
 	name := uuid.NewString() + mime.Extension()
-	baseDir := filepath.Dir(exePath)
-	location := filepath.Join(baseDir, "assets", "statement", name)
+	location := filepath.Join(os.Getenv("ASSETS_PATH"), "assets", "statement", name)
 	dst, err := os.OpenFile(location, os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
 	if err != nil {
 		zlog.Error("failed to open file", zap.Error(err))
