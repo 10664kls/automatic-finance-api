@@ -1,0 +1,1 @@
+ALTER TABLE statement_file_analysis DROP COLUMN status;
