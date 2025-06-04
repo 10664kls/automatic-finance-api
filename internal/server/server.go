@@ -71,10 +71,14 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.GET("/incomes/calculations", s.listIncomeCalculations, mws...)
 	v1.GET("/incomes/calculations/:number", s.getIncomeCalculationByNumber, mws...)
 	v1.PUT("/incomes/calculations/:number", s.recalculateIncome, mws...)
+	v1.POST("/incomes/calculations/:number/complete", s.completeIncomeCalculation, mws...)
 	v1.POST("/incomes/calculations/:number/transactions", s.listIncomeTransactionsByNumber, mws...)
 	v1.GET("/incomes/calculations/:number/transactions/:billNumber", s.getIncomeTransactionByBillNumber, mws...)
 
 	v1.GET("/incomes/wordlists", s.listIncomeWordlists, mws...)
+	v1.GET("/incomes/wordlists/:id", s.getIncomeWordlistByID, mws...)
+	v1.POST("/incomes/wordlists", s.createIncomeWordlist, mws...)
+	v1.PUT("/incomes/wordlists/:id", s.updateIncomeWordlist, mws...)
 
 	return nil
 }
@@ -464,5 +468,64 @@ func (s *Server) getIncomeTransactionByBillNumber(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{
 		"transaction": transaction,
+	})
+}
+
+func (s *Server) getIncomeWordlistByID(c echo.Context) error {
+	req := new(income.WordlistReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	wordlist, err := s.income.GetWordlistByID(c.Request().Context(), req.ID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"wordlist": wordlist,
+	})
+}
+
+func (s *Server) createIncomeWordlist(c echo.Context) error {
+	req := new(income.WordlistReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	wordlist, err := s.income.CreateWordlist(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"wordlist": wordlist,
+	})
+}
+
+func (s *Server) updateIncomeWordlist(c echo.Context) error {
+	req := new(income.WordlistReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	wordlist, err := s.income.UpdateWordlist(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"wordlist": wordlist,
+	})
+}
+
+func (s *Server) completeIncomeCalculation(c echo.Context) error {
+	calculation, err := s.income.CompleteCalculation(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
 	})
 }
