@@ -1,0 +1,3 @@
+ALTER TABLE statement_file_analysis 
+  ADD updated_by NVARCHAR(150) NOT NULL DEFAULT '',
+  updated_at DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET();
