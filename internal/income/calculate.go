@@ -12,6 +12,9 @@ import (
 	"github.com/10664kls/automatic-finance-api/internal/pager"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/shopspring/decimal"
+	edPb "google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	rpcStatus "google.golang.org/grpc/status"
 )
 
 // ErrCalculationNotFound is returned when a calculation is not found in the database.
@@ -32,8 +35,11 @@ type Calculation struct {
 	PeriodInMonth        decimal.Decimal `json:"periodInMonth"`
 	StartedAt            time.Time       `json:"startedAt"`
 	EndedAt              time.Time       `json:"endedAt"`
+	Status               status          `json:"status"`
 	CreatedBy            string          `json:"createdBy"`
+	UpdatedBy            string          `json:"updatedBy"`
 	CreatedAt            time.Time       `json:"createdAt"`
+	UpdatedAt            time.Time       `json:"updatedAt"`
 
 	SalaryBreakdown     *SalaryBreakdown     `json:"salaryBreakdown"`
 	AllowanceBreakdown  *AllowanceBreakdown  `json:"allowanceBreakdown"`
@@ -41,7 +47,7 @@ type Calculation struct {
 	Source              *Source              `json:"source"`
 }
 
-func (c *Calculation) ReCalculate(in *RecalculateReq) error {
+func (c *Calculation) ReCalculate(by string, in *RecalculateReq) error {
 	c.SalaryBreakdown = newSalaryBreakdown(in.MonthlySalaries)
 	c.AllowanceBreakdown = newAllowanceBreakdown(in.Allowances)
 	c.CommissionBreakdown = newCommissionBreakdown(in.Commissions)
@@ -51,6 +57,8 @@ func (c *Calculation) ReCalculate(in *RecalculateReq) error {
 		return fmt.Errorf("failed to convert calculation to state map: %w", err)
 	}
 
+	c.UpdatedAt = time.Now()
+	c.UpdatedBy = by
 	c.populate(c.Product, c.PeriodInMonth, c.ExchangeRate, mapCal)
 	return nil
 }
@@ -117,10 +125,10 @@ type Breakdown struct {
 }
 
 type MonthlySalary struct {
-	Month                 string            `json:"month"`
-	TimesReceived         decimal.Decimal   `json:"timesReceived"`
-	ActualAmountsReceived []decimal.Decimal `json:"actualAmountsReceived"`
-	Total                 decimal.Decimal   `json:"total"`
+	Month         string          `json:"month"`
+	TimesReceived decimal.Decimal `json:"timesReceived"`
+	Transactions  []Transaction   `json:"transactions"`
+	Total         decimal.Decimal `json:"total"`
 }
 
 type SalaryBreakdown struct {
@@ -142,6 +150,7 @@ type Allowance struct {
 	Title          string          `json:"title"`
 	Months         decimal.Decimal `json:"months"`
 	MonthlyAverage decimal.Decimal `json:"monthlyAverage"`
+	Transactions   []Transaction   `json:"transactions"`
 	Total          decimal.Decimal `json:"total"`
 }
 
@@ -160,9 +169,9 @@ func (l *AllowanceBreakdown) Bytes() []byte {
 }
 
 type Commission struct {
-	Month                 string            `json:"month"`
-	ActualAmountsReceived []decimal.Decimal `json:"actualAmountsReceived"`
-	Total                 decimal.Decimal   `json:"total"`
+	Month        string          `json:"month"`
+	Transactions []Transaction   `json:"transactions"`
+	Total        decimal.Decimal `json:"total"`
 }
 
 type CommissionBreakdown struct {
@@ -181,6 +190,7 @@ func (l *CommissionBreakdown) Bytes() []byte {
 }
 
 func newCalculation(by string, number, statementFileName string, product product) *Calculation {
+	now := time.Now()
 	return &Calculation{
 		Number:               number,
 		StatementFileName:    statementFileName,
@@ -191,54 +201,68 @@ func newCalculation(by string, number, statementFileName string, product product
 		TotalOtherIncome:     decimal.Zero,
 		TotalBasicSalary:     decimal.Zero,
 		TotalIncome:          decimal.Zero,
+		Status:               StatusPending,
 		CreatedBy:            by,
-		CreatedAt:            time.Now(),
+		CreatedAt:            now,
+		UpdatedBy:            by,
+		UpdatedAt:            now,
 	}
 }
 
 func (s *Calculation) toStateMap() (statMap, error) {
 	m := make(statMap, 0)
 
-	awsActualAmountsReceived := make(map[string][]decimal.Decimal, 0)
+	awnTxs := make(map[string][]Transaction, 0)
 	awsMonthly := make([]decimal.Decimal, 0)
 	awsAverageMonths := make(map[string]decimal.Decimal, 0)
 	for _, a := range s.AllowanceBreakdown.Allowances {
-		awsActualAmountsReceived[a.Title] = append(awsActualAmountsReceived[a.Title], a.Total)
+		if len(a.Transactions) == 0 {
+			continue
+		}
+		awnTxs[a.Title] = append(awnTxs[a.Title], a.Transactions...)
 		awsMonthly = append(awsMonthly, a.Total)
 		awsAverageMonths[a.Title] = a.Months
 	}
 
 	m[SourceAllowance.String()] = &statCal{
-		ActualAmountsReceived: awsActualAmountsReceived,
-		Total:                 sumAmounts(awsMonthly),
-		Monthly:               awsMonthly,
-		AverageMonth:          awsAverageMonths,
+		Transactions: awnTxs,
+		Total:        sumAmounts(awsMonthly),
+		Monthly:      awsMonthly,
+		AverageMonth: awsAverageMonths,
 	}
 
-	commActualAmountsReceived := make(map[string][]decimal.Decimal, 0)
+	comTxs := make(map[string][]Transaction, 0)
 	commMonthly := make([]decimal.Decimal, 0)
 	for _, c := range s.CommissionBreakdown.Commissions {
-		commActualAmountsReceived[c.Month] = append(commActualAmountsReceived[c.Month], c.ActualAmountsReceived...)
+		if len(c.Transactions) == 0 {
+			continue
+		}
+		comTxs[c.Month] = append(comTxs[c.Month], c.Transactions...)
 		commMonthly = append(commMonthly, c.Total)
 	}
 
 	m[SourceCommission.String()] = &statCal{
-		ActualAmountsReceived: commActualAmountsReceived,
-		Monthly:               commMonthly,
-		Total:                 sumAmounts(commMonthly),
+		Transactions: comTxs,
+		Monthly:      commMonthly,
+		Total:        sumAmounts(commMonthly),
 	}
 
-	salActualAmountsReceived := make(map[string][]decimal.Decimal, 0)
+	salTxs := make(map[string][]Transaction, 0)
 	salaryMonthly := make([]decimal.Decimal, 0)
 	for _, s := range s.SalaryBreakdown.MonthlySalaries {
-		salActualAmountsReceived[s.Month] = append(salActualAmountsReceived[s.Month], s.ActualAmountsReceived...)
-		salaryMonthly = append(salaryMonthly, s.ActualAmountsReceived...)
+		if len(s.Transactions) == 0 {
+			continue
+		}
+		salTxs[s.Month] = append(salTxs[s.Month], s.Transactions...)
+		for _, t := range s.Transactions {
+			salaryMonthly = append(salaryMonthly, t.Amount)
+		}
 	}
 
 	m[SourceSalary.String()] = &statCal{
-		ActualAmountsReceived: salActualAmountsReceived,
-		Monthly:               salaryMonthly,
-		Total:                 sumAmounts(salaryMonthly),
+		Transactions: salTxs,
+		Monthly:      salaryMonthly,
+		Total:        sumAmounts(salaryMonthly),
 	}
 
 	return m, nil
@@ -307,12 +331,13 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 			Set("period_in_month", in.PeriodInMonth).
 			Set("started_at", in.StartedAt).
 			Set("ended_at", in.EndedAt).
+			Set("status", in.Status.String()).
 			Set("source_income", in.Source.Bytes()).
 			Set("monthly_salary", in.SalaryBreakdown.Bytes()).
 			Set("allowance", in.AllowanceBreakdown.Bytes()).
 			Set("commission", in.CommissionBreakdown.Bytes()).
-			Set("created_by", in.CreatedBy).
-			Set("created_at", in.CreatedAt).
+			Set("updated_by", in.UpdatedBy).
+			Set("updated_at", in.UpdatedAt).
 			Where(sq.Eq{
 				"number": in.Number,
 			}).
@@ -347,6 +372,7 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 					"period_in_month",
 					"started_at",
 					"ended_at",
+					"status",
 					"source_income",
 					"monthly_salary",
 					"allowance",
@@ -370,6 +396,7 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 					in.PeriodInMonth,
 					in.StartedAt,
 					in.EndedAt,
+					in.Status.String(),
 					in.Source.Bytes(),
 					in.SalaryBreakdown.Bytes(),
 					in.AllowanceBreakdown.Bytes(),
@@ -417,12 +444,15 @@ func listCalculations(ctx context.Context, db *sql.DB, in *CalculationQuery) ([]
 		"period_in_month",
 		"started_at",
 		"ended_at",
+		"status",
 		"source_income",
 		"monthly_salary",
 		"allowance",
 		"commission",
 		"created_by",
 		"created_at",
+		"updated_by",
+		"updated_at",
 	).
 		From("statement_file_analysis").
 		Where(pred, args...).
@@ -457,12 +487,15 @@ func listCalculations(ctx context.Context, db *sql.DB, in *CalculationQuery) ([]
 			&c.PeriodInMonth,
 			&c.StartedAt,
 			&c.EndedAt,
+			&c.Status,
 			&source,
 			&salaries,
 			&allowances,
 			&commissions,
 			&c.CreatedBy,
 			&c.CreatedAt,
+			&c.UpdatedBy,
+			&c.UpdatedAt,
 		)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrCalculationNotFound
@@ -521,4 +554,100 @@ func getCalculation(ctx context.Context, db *sql.DB, in *CalculationQuery) (*Cal
 	}
 
 	return calculations[0], nil
+}
+
+type Transaction struct {
+	Date       ddmmyyyy        `json:"date"`
+	BillNumber string          `json:"billNumber"`
+	Noted      string          `json:"noted"`
+	Amount     decimal.Decimal `json:"amount"`
+}
+
+type ListTransactionsResult struct {
+	Transactions []*Transaction `json:"transactions"`
+}
+
+type TransactionReq struct {
+	// The statement calculation number
+	Number string `json:"number" param:"number"`
+
+	// Category is the source of the income
+	Category source `json:"category"`
+
+	// Month in MMYYYY format
+	Month mmyyyy `json:"month"`
+}
+
+func (r *TransactionReq) Validate() error {
+	violations := make([]*edPb.BadRequest_FieldViolation, 0)
+
+	if r.Number == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "number",
+			Description: "Number must not be empty",
+		})
+	}
+
+	if r.Month.Time().IsZero() {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "month",
+			Description: "Month must not be empty",
+		})
+	}
+
+	if r.Category == SourceUnSpecified {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "category",
+			Description: "Category must not be empty",
+		})
+	}
+
+	if len(violations) > 0 {
+		s, _ := rpcStatus.New(
+			codes.InvalidArgument,
+			"Transaction is not valid or incomplete. Please check the errors and try again, see details for more information.",
+		).WithDetails(&edPb.BadRequest{
+			FieldViolations: violations,
+		})
+
+		return s.Err()
+	}
+
+	return nil
+}
+
+type GetTransactionReq struct {
+	Number     string `json:"number" param:"number"`
+	BillNumber string `json:"billNumber" param:"billNumber"`
+}
+
+func (r *GetTransactionReq) Validate() error {
+	violations := make([]*edPb.BadRequest_FieldViolation, 0)
+
+	if r.Number == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "number",
+			Description: "Number must not be empty",
+		})
+	}
+
+	if r.BillNumber == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "billNumber",
+			Description: "Bill number must not be empty",
+		})
+	}
+
+	if len(violations) > 0 {
+		s, _ := rpcStatus.New(
+			codes.InvalidArgument,
+			"Transaction is not valid or incomplete. Please check the errors and try again, see details for more information.",
+		).WithDetails(&edPb.BadRequest{
+			FieldViolations: violations,
+		})
+
+		return s.Err()
+	}
+
+	return nil
 }
