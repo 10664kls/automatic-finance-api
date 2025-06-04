@@ -63,6 +63,16 @@ func (c *Calculation) ReCalculate(by string, in *RecalculateReq) error {
 	return nil
 }
 
+func (c *Calculation) Complete(by string) {
+	c.Status = StatusCompleted
+	c.UpdatedAt = time.Now()
+	c.UpdatedBy = by
+}
+
+func (c *Calculation) IsCompleted() bool {
+	return c.Status == StatusCompleted
+}
+
 func newSalaryBreakdown(months []MonthlySalary) *SalaryBreakdown {
 	return &SalaryBreakdown{
 		MonthlySalaries: months,
