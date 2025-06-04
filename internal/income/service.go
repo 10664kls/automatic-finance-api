@@ -74,6 +74,84 @@ func (s *Service) ListWordlists(ctx context.Context, in *WordlistQuery) (*ListWo
 	}, nil
 }
 
+func (s *Service) GetWordlistByID(ctx context.Context, id int64) (*Wordlist, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("Method", "GetWordlistByID"),
+		zap.String("Username", claims.Username),
+		zap.Int64("ID", id),
+	)
+
+	wordlist, err := getWordlist(ctx, s.db, &WordlistQuery{
+		ID: id,
+	})
+	if errors.Is(err, ErrWordlistNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this resource or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get wordlist by ID", zap.Error(err))
+		return nil, err
+	}
+
+	return wordlist, nil
+}
+
+func (s *Service) CreateWordlist(ctx context.Context, in *WordlistReq) (*Wordlist, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("Method", "CreateWordlist"),
+		zap.String("Username", claims.Username),
+		zap.Any("req", in),
+	)
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	wordlist := in.ToWordlist(claims.Username)
+	if err := saveWordlist(ctx, s.db, wordlist); err != nil {
+		zlog.Error("failed to save wordlist", zap.Error(err))
+		return nil, err
+	}
+
+	return wordlist, nil
+}
+
+func (s *Service) UpdateWordlist(ctx context.Context, in *WordlistReq) (*Wordlist, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("Method", "UpdateWordlist"),
+		zap.String("Username", claims.Username),
+		zap.Any("req", in),
+	)
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	wordlist, err := getWordlist(ctx, s.db, &WordlistQuery{
+		ID: in.ID,
+	})
+	if errors.Is(err, ErrWordlistNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this resource or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get wordlist by ID", zap.Error(err))
+		return nil, err
+	}
+
+	wordlist.Update(claims.Username, in)
+	if err := saveWordlist(ctx, s.db, wordlist); err != nil {
+		zlog.Error("failed to save wordlist", zap.Error(err))
+		return nil, err
+	}
+
+	return wordlist, nil
+}
+
 func (s *Service) CalculateIncome(ctx context.Context, in *CalculateReq) (*Calculation, error) {
 	claims := auth.ClaimsFromContext(ctx)
 
@@ -217,6 +295,39 @@ func (s *Service) ReCalculateIncome(ctx context.Context, in *RecalculateReq) (*C
 		return nil, err
 	}
 
+	if err := saveCalculationIncome(ctx, s.db, calculation); err != nil {
+		zlog.Error("failed to save calculation", zap.Error(err))
+		return nil, err
+	}
+
+	return calculation, nil
+}
+
+func (s *Service) CompleteCalculation(ctx context.Context, number string) (*Calculation, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("Method", "CompleteCalculation"),
+		zap.String("Username", claims.Username),
+		zap.Any("number", number),
+	)
+
+	calculation, err := getCalculation(ctx, s.db, &CalculationQuery{
+		Number: number,
+	})
+	if errors.Is(err, ErrCalculationNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this resource or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get calculation by number", zap.Error(err))
+		return nil, err
+	}
+
+	if calculation.IsCompleted() {
+		return calculation, nil
+	}
+
+	calculation.Complete(claims.Username)
 	if err := saveCalculationIncome(ctx, s.db, calculation); err != nil {
 		zlog.Error("failed to save calculation", zap.Error(err))
 		return nil, err
