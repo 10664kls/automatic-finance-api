@@ -77,24 +77,8 @@ func matchWordlists(target string, wordlists []*Wordlist) (source, string, bool)
 	target = strings.ToLower(target)
 	for _, w := range wordlists {
 		w.Word = strings.TrimSpace(w.Word)
-		switch {
-		case len(w.Word) <= 3:
-			targets := strings.SplitSeq(target, "|")
-			for t := range targets {
-				t = strings.TrimSpace(t)
-				ts := strings.SplitSeq(t, " ")
-				for v := range ts {
-					v = strings.TrimSpace(v)
-					if strings.EqualFold(v, strings.ToLower(w.Word)) {
-						return w.Category, w.Word, true
-					}
-				}
-			}
-
-		default:
-			if strings.Contains(target, strings.ToLower(w.Word)) {
-				return w.Category, w.Word, true
-			}
+		if strings.Contains(target, strings.ToLower(w.Word)) {
+			return w.Category, w.Word, true
 		}
 	}
 	return SourceUnSpecified, "", false
