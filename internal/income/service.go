@@ -212,7 +212,7 @@ func (s *Service) ReCalculateIncome(ctx context.Context, in *RecalculateReq) (*C
 		return nil, err
 	}
 
-	if err := calculation.ReCalculate(in); err != nil {
+	if err := calculation.ReCalculate(claims.Username, in); err != nil {
 		zlog.Error("failed to recalculate income", zap.Error(err))
 		return nil, err
 	}
@@ -223,6 +223,174 @@ func (s *Service) ReCalculateIncome(ctx context.Context, in *RecalculateReq) (*C
 	}
 
 	return calculation, nil
+}
+
+func (s *Service) ListIncomeTransactionsByNumber(ctx context.Context, in *TransactionReq) (*ListTransactionsResult, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("Method", "ListIncomeTransactionsByNumber"),
+		zap.String("Username", claims.Username),
+		zap.Any("req", in),
+	)
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	calculation, err := getCalculation(ctx, s.db, &CalculationQuery{
+		Number: in.Number,
+	})
+	if errors.Is(err, ErrCalculationNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this calculation or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get calculation by number", zap.Error(err))
+		return nil, err
+	}
+
+	statementFile, err := getStatementFileByName(ctx, s.db, calculation.StatementFileName)
+	if errors.Is(err, ErrStatementFileNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this statement file or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get statement file", zap.Error(err))
+		return nil, err
+	}
+
+	wordlists, err := listWordlists(ctx, s.db, &WordlistQuery{
+		Category: in.Category.String(),
+		noLimit:  true,
+	})
+	if err != nil {
+		zlog.Error("failed to get wordlists", zap.Error(err))
+		return nil, err
+	}
+
+	txs, err := s.listTransactionFromStatementFile(ctx, in, wordlists, statementFile)
+	if err != nil {
+		zlog.Error("failed to list transactions", zap.Error(err))
+		return nil, err
+	}
+
+	return &ListTransactionsResult{Transactions: txs}, nil
+}
+
+func (s *Service) GetIncomeTransactionByBillNumber(ctx context.Context, in *GetTransactionReq) (*Transaction, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("Method", "GetIncomeTransactionByBillNumber"),
+		zap.String("Username", claims.Username),
+		zap.Any("req", in),
+	)
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	calculation, err := getCalculation(ctx, s.db, &CalculationQuery{
+		Number: in.Number,
+	})
+	if errors.Is(err, ErrCalculationNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this calculation or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get calculation by number", zap.Error(err))
+		return nil, err
+	}
+
+	statementFile, err := getStatementFileByName(ctx, s.db, calculation.StatementFileName)
+	if errors.Is(err, ErrStatementFileNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this statement file or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get statement file", zap.Error(err))
+		return nil, err
+	}
+
+	f, err := excelize.OpenFile(statementFile.Location)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", statementFile.Name, err)
+	}
+	defer f.Close()
+
+	const sheetName = "Table 1"
+
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rows: %w", err)
+	}
+
+	for _, row := range rows {
+		if len(row) > 4 {
+			incomeAmount, err := decimal.NewFromString(strings.ReplaceAll(row[4], ",", ""))
+			if err != nil {
+				continue
+			}
+			if incomeAmount.GreaterThan(decimal.Zero) && len(row[2]) > 0 {
+				if strings.TrimSpace(strings.ToLower(row[1])) == strings.TrimSpace(strings.ToLower(in.BillNumber)) {
+					date, err := time.ParseInLocation("02/01/2006", row[0], time.Local)
+					if err != nil {
+						continue
+					}
+
+					return &Transaction{
+						BillNumber: row[1],
+						Noted:      row[2],
+						Date:       ddmmyyyy(date),
+						Amount:     incomeAmount,
+					}, nil
+				}
+			}
+		}
+	}
+
+	return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this resource or (it may not exist)")
+}
+
+func (s *Service) listTransactionFromStatementFile(ctx context.Context, txReq *TransactionReq, wordlists []*Wordlist, statement *StatementFile) ([]*Transaction, error) {
+	f, err := excelize.OpenFile(statement.Location)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", statement.Name, err)
+	}
+	defer f.Close()
+
+	const sheetName = "Table 1"
+
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rows: %w", err)
+	}
+
+	txs := make([]*Transaction, 0)
+	for _, row := range rows {
+		if len(row) > 4 {
+			incomeAmount, err := decimal.NewFromString(strings.ReplaceAll(row[4], ",", ""))
+			if err != nil {
+				continue
+			}
+			if incomeAmount.GreaterThan(decimal.Zero) && len(row[2]) > 0 {
+				if _, _, exist := matchWordlists(row[2], wordlists); exist {
+					date, err := time.ParseInLocation("02/01/2006", row[0], time.Local)
+					if err != nil {
+						continue
+					}
+
+					if strings.Compare(date.Format("January-2006"), txReq.Month.String()) == 0 {
+						txs = append(txs, &Transaction{
+							Amount:     incomeAmount,
+							Date:       ddmmyyyy(date),
+							BillNumber: row[1],
+							Noted:      row[2],
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return txs, nil
 }
 
 func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *CalculateReq, wordlists []*Wordlist, statement *StatementFile) (*Calculation, error) {
@@ -290,58 +458,61 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 				month := getMonthWithYYYYMM(row[0])
 
 				if category, title, exist := matchWordlists(row[2], wordlists); exist {
+					date, err := time.ParseInLocation("02/01/2006", row[0], time.Local)
+					if err != nil {
+						return nil, fmt.Errorf("failed to parse date: %w", err)
+					}
+
 					switch category {
 					case SourceSalary:
-
-						if incomeAmount.LessThanOrEqual(decimal.NewFromInt(1_000_000)) {
-							if _, ok := incomes[keyAw]; !ok {
-								incomes[keyAw] = &statCal{
-									ActualAmountsReceived: make(map[string][]decimal.Decimal),
-									AverageMonth:          make(map[string]decimal.Decimal),
-								}
+						if _, ok := incomes[keySy]; !ok {
+							incomes[keySy] = &statCal{
+								Transactions: make(map[string][]Transaction),
 							}
-
-							incomes[keyAw].Monthly = append(incomes[keyAw].Monthly, incomeAmount)
-							incomes[keyAw].Total = incomes[keyAw].Total.Add(incomeAmount)
-							incomes[keyAw].AverageMonth[title] = defaultMonths
-							incomes[keyAw].ActualAmountsReceived[title] = append(incomes[keyAw].ActualAmountsReceived[title], incomeAmount)
-
-						} else {
-							if _, ok := incomes[keySy]; !ok {
-								incomes[keySy] = &statCal{
-									ActualAmountsReceived: make(map[string][]decimal.Decimal),
-								}
-							}
-
-							incomes[keySy].Monthly = append(incomes[keySy].Monthly, incomeAmount)
-							incomes[keySy].Total = incomes[keySy].Total.Add(incomeAmount)
-							incomes[keySy].ActualAmountsReceived[month] = append(incomes[keySy].ActualAmountsReceived[month], incomeAmount)
-
 						}
+
+						incomes[keySy].Monthly = append(incomes[keySy].Monthly, incomeAmount)
+						incomes[keySy].Total = incomes[keySy].Total.Add(incomeAmount)
+						incomes[keySy].Transactions[month] = append(incomes[keySy].Transactions[month], Transaction{
+							Amount:     incomeAmount,
+							Date:       ddmmyyyy(date),
+							BillNumber: row[1],
+							Noted:      row[2],
+						})
 
 					case SourceCommission:
 						if _, ok := incomes[keyCom]; !ok {
 							incomes[keyCom] = &statCal{
-								ActualAmountsReceived: make(map[string][]decimal.Decimal),
+								Transactions: make(map[string][]Transaction),
 							}
 						}
 
 						incomes[keyCom].Monthly = append(incomes[keyCom].Monthly, incomeAmount)
 						incomes[keyCom].Total = incomes[keyCom].Total.Add(incomeAmount)
-						incomes[keyCom].ActualAmountsReceived[month] = append(incomes[keyCom].ActualAmountsReceived[month], incomeAmount)
+						incomes[keyCom].Transactions[month] = append(incomes[keyCom].Transactions[month], Transaction{
+							Amount:     incomeAmount,
+							Date:       ddmmyyyy(date),
+							BillNumber: row[1],
+							Noted:      row[2],
+						})
 
 					case SourceAllowance:
 						if _, ok := incomes[keyAw]; !ok {
 							incomes[keyAw] = &statCal{
-								ActualAmountsReceived: make(map[string][]decimal.Decimal),
-								AverageMonth:          make(map[string]decimal.Decimal),
+								Transactions: make(map[string][]Transaction),
+								AverageMonth: make(map[string]decimal.Decimal),
 							}
 						}
 
 						incomes[keyAw].Monthly = append(incomes[keyAw].Monthly, incomeAmount)
 						incomes[keyAw].Total = incomes[keyAw].Total.Add(incomeAmount)
 						incomes[keyAw].AverageMonth[title] = defaultMonths
-						incomes[keyAw].ActualAmountsReceived[title] = append(incomes[keyAw].ActualAmountsReceived[title], incomeAmount)
+						incomes[keyAw].Transactions[title] = append(incomes[keyAw].Transactions[title], Transaction{
+							Amount:     incomeAmount,
+							Date:       ddmmyyyy(date),
+							BillNumber: row[1],
+							Noted:      row[2],
+						})
 					}
 				}
 			}
@@ -375,9 +546,9 @@ func newSourceIncome(m statMap, product product, period decimal.Decimal) *Source
 }
 
 type statCal struct {
-	ActualAmountsReceived map[string][]decimal.Decimal
-	Monthly               []decimal.Decimal
-	Total                 decimal.Decimal
+	Transactions map[string][]Transaction
+	Monthly      []decimal.Decimal
+	Total        decimal.Decimal
 
 	// This used for allowance calculate the average.
 	AverageMonth map[string]decimal.Decimal
@@ -394,8 +565,8 @@ func (s statMap) totalIncome(product product) decimal.Decimal {
 		}
 
 		total := decimal.Zero
-		for _, cal := range raw.ActualAmountsReceived {
-			total = total.Add(findMinAmount(cal))
+		for _, tx := range raw.Transactions {
+			total = total.Add(findMinFromTransactions(tx))
 		}
 		return total
 
@@ -443,7 +614,12 @@ func (s statMap) totalBasicSalary(product product, period decimal.Decimal) decim
 }
 
 func (s statMap) totalOtherIncome(period decimal.Decimal) decimal.Decimal {
-	return s.totalIncome(ProductPL).Sub(s.totalBasicSalary(ProductPL, period))
+	o := s.totalIncome(ProductPL).Sub(s.totalBasicSalary(ProductPL, period))
+	if o.LessThan(decimal.Zero) {
+		return decimal.Zero
+	}
+
+	return o
 }
 
 func (s statMap) averageOtherIncome(period decimal.Decimal) decimal.Decimal {
@@ -535,21 +711,26 @@ func (s statMap) toListAllowances() *AllowanceBreakdown {
 		return &AllowanceBreakdown{}
 	}
 
-	allowances := make([]Allowance, 0, len(s))
+	allowances := make([]Allowance, 0)
 	totalAllowance := decimal.Zero
 	months := decimal.NewFromInt(12)
-	for title, cal := range raw.ActualAmountsReceived {
+	for title, tx := range raw.Transactions {
+		if len(tx) == 0 {
+			continue
+		}
+
 		if m, ok := raw.AverageMonth[title]; ok {
 			months = m
 		}
 
-		amount := sumAmounts(cal)
+		amount := sumTransactions(tx)
 		average := amount.Div(months).Floor()
 		allowances = append(allowances, Allowance{
 			Title:          title,
 			Months:         months,
 			MonthlyAverage: average,
 			Total:          amount,
+			Transactions:   tx,
 		})
 
 		totalAllowance = totalAllowance.Add(average)
@@ -568,18 +749,21 @@ func (s statMap) toListCommissions(period decimal.Decimal) *CommissionBreakdown 
 		return &CommissionBreakdown{}
 	}
 
-	commissions := make([]Commission, 0, len(s))
-	for month, amounts := range raw.ActualAmountsReceived {
+	commissions := make([]Commission, 0)
+	for month, tx := range raw.Transactions {
+		if len(tx) == 0 {
+			continue
+		}
 		commissions = append(commissions, Commission{
-			Month:                 month,
-			ActualAmountsReceived: amounts,
-			Total:                 sumAmounts(amounts),
+			Month:        month,
+			Transactions: tx,
+			Total:        sumTransactions(tx),
 		})
 	}
 
 	sort.Slice(commissions, func(i, j int) bool {
-		ti, _ := time.Parse("January 2006", commissions[i].Month)
-		tj, _ := time.Parse("January 2006", commissions[j].Month)
+		ti, _ := time.Parse("January-2006", commissions[i].Month)
+		tj, _ := time.Parse("January-2006", commissions[j].Month)
 		return ti.Before(tj)
 	})
 
@@ -601,19 +785,24 @@ func (s statMap) toListMonthlySalaries() *SalaryBreakdown {
 		return &SalaryBreakdown{}
 	}
 
-	monthlySalaries := make([]MonthlySalary, 0, len(raw.ActualAmountsReceived))
-	for month, amounts := range raw.ActualAmountsReceived {
-		monthlySalaries = append(monthlySalaries, MonthlySalary{
-			Month:                 month,
-			TimesReceived:         decimal.NewFromInt(int64(len(amounts))),
-			ActualAmountsReceived: amounts,
-			Total:                 sumAmounts(amounts),
-		})
+	monthlySalaries := make([]MonthlySalary, 0)
+	for month, tx := range raw.Transactions {
+		if len(tx) == 0 {
+			continue
+		}
+
+		transaction := MonthlySalary{
+			Month:         month,
+			TimesReceived: decimal.NewFromInt(int64(len(tx))),
+			Total:         sumTransactions(tx),
+			Transactions:  tx,
+		}
+		monthlySalaries = append(monthlySalaries, transaction)
 	}
 
 	sort.Slice(monthlySalaries, func(i, j int) bool {
-		ti, _ := time.Parse("January 2006", monthlySalaries[i].Month)
-		tj, _ := time.Parse("January 2006", monthlySalaries[j].Month)
+		ti, _ := time.Parse("January-2006", monthlySalaries[i].Month)
+		tj, _ := time.Parse("January-2006", monthlySalaries[j].Month)
 		return ti.Before(tj)
 	})
 
@@ -638,6 +827,20 @@ func findMinAmount(amounts []decimal.Decimal) decimal.Decimal {
 	return min
 }
 
+func findMinFromTransactions(ts []Transaction) decimal.Decimal {
+	if len(ts) == 0 {
+		return decimal.Zero
+	}
+
+	min := ts[0].Amount
+	for _, t := range ts {
+		if t.Amount.LessThan(min) {
+			min = t.Amount
+		}
+	}
+	return min
+}
+
 func sumAmounts(amounts []decimal.Decimal) decimal.Decimal {
 	if len(amounts) == 0 {
 		return decimal.Zero
@@ -646,6 +849,18 @@ func sumAmounts(amounts []decimal.Decimal) decimal.Decimal {
 	sum := decimal.Zero
 	for _, amount := range amounts {
 		sum = sum.Add(amount)
+	}
+	return sum
+}
+
+func sumTransactions(ts []Transaction) decimal.Decimal {
+	if len(ts) == 0 {
+		return decimal.Zero
+	}
+
+	sum := decimal.Zero
+	for _, t := range ts {
+		sum = sum.Add(t.Amount)
 	}
 	return sum
 }
@@ -698,7 +913,7 @@ func getMonthWithYYYYMM(s string) string {
 	if err != nil {
 		return ""
 	}
-	return m.Format("January 2006")
+	return m.Format("January-2006")
 }
 
 type CalculateReq struct {
