@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	rpcStatus "google.golang.org/grpc/status"
 )
 
 // ErrUnsupportedFileType is returned when the file type is not supported.
@@ -117,7 +117,7 @@ func (s *Service) GetStatement(ctx context.Context, name string, signature strin
 
 	statementFile, err := getStatementFileByName(ctx, s.db, name)
 	if errors.Is(err, ErrStatementFileNotFound) {
-		return nil, status.Error(codes.PermissionDenied, "You are not allowed to access this file.")
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this file.")
 	}
 	if err != nil {
 		zlog.Error("failed to get statement file", zap.Error(err))
@@ -125,7 +125,7 @@ func (s *Service) GetStatement(ctx context.Context, name string, signature strin
 	}
 
 	if !verifySignature(statementFile, signature) {
-		return nil, status.Error(codes.PermissionDenied, "You are not allowed to access this file.")
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this file.")
 	}
 
 	return statementFile, nil
