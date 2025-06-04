@@ -71,6 +71,8 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.GET("/incomes/calculations", s.listIncomeCalculations, mws...)
 	v1.GET("/incomes/calculations/:number", s.getIncomeCalculationByNumber, mws...)
 	v1.PUT("/incomes/calculations/:number", s.recalculateIncome, mws...)
+	v1.POST("/incomes/calculations/:number/transactions", s.listIncomeTransactionsByNumber, mws...)
+	v1.GET("/incomes/calculations/:number/transactions/:billNumber", s.getIncomeTransactionByBillNumber, mws...)
 
 	v1.GET("/incomes/wordlists", s.listIncomeWordlists, mws...)
 
@@ -433,4 +435,34 @@ func (s *Server) listIncomeWordlists(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, wordlists)
+}
+
+func (s *Server) listIncomeTransactionsByNumber(c echo.Context) error {
+	req := new(income.TransactionReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	transactions, err := s.income.ListIncomeTransactionsByNumber(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, transactions)
+}
+
+func (s *Server) getIncomeTransactionByBillNumber(c echo.Context) error {
+	req := new(income.GetTransactionReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	transaction, err := s.income.GetIncomeTransactionByBillNumber(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"transaction": transaction,
+	})
 }
