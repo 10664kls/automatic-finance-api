@@ -586,80 +586,88 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 	keySy := SourceSalary.String()
 	keyCom := SourceCommission.String()
 	defaultMonths := decimal.NewFromInt(12)
+	var valid bool
 	for rows.Next() {
 		row, err := rows.Columns()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get row columns: %w", err)
 		}
 
-		if len(row) > 4 {
-			incomeAmount, err := decimal.NewFromString(strings.ReplaceAll(row[4], ",", ""))
-			if err != nil {
-				continue
-			}
-			if incomeAmount.GreaterThan(decimal.Zero) && len(row[2]) > 0 {
-				month := getMonthWithYYYYMM(row[0])
+		if len(row) <= 4 {
+			continue // skip rows with insufficient columns
+		}
 
-				if category, title, exist := matchWordlists(row[2], wordlists); exist {
-					date, err := time.ParseInLocation("02/01/2006", row[0], time.Local)
-					if err != nil {
-						return nil, fmt.Errorf("failed to parse date: %w", err)
-					}
+		// Parse amount
+		rawAmount := strings.ReplaceAll(row[4], ",", "")
+		incomeAmount, err := decimal.NewFromString(rawAmount)
+		if err != nil || !incomeAmount.GreaterThan(decimal.Zero) {
+			continue // skip invalid or zero amounts
+		}
 
-					switch category {
-					case SourceSalary:
-						if _, ok := incomes[keySy]; !ok {
-							incomes[keySy] = &statCal{
-								Transactions: make(map[string][]Transaction),
-							}
-						}
+		if len(row[2]) == 0 {
+			continue // skip if the note field is empty
+		}
 
-						incomes[keySy].Monthly = append(incomes[keySy].Monthly, incomeAmount)
-						incomes[keySy].Total = incomes[keySy].Total.Add(incomeAmount)
-						incomes[keySy].Transactions[month] = append(incomes[keySy].Transactions[month], Transaction{
-							Amount:     incomeAmount,
-							Date:       ddmmyyyy(date),
-							BillNumber: row[1],
-							Noted:      row[2],
-						})
+		// Parse date
+		date, err := time.ParseInLocation("02/01/2006", row[0], time.Local)
+		if err != nil {
+			continue // skip if date is invalid
+		}
+		month := getMonthWithYYYYMM(row[0])
 
-					case SourceCommission:
-						if _, ok := incomes[keyCom]; !ok {
-							incomes[keyCom] = &statCal{
-								Transactions: make(map[string][]Transaction),
-							}
-						}
+		// Match note field with wordlist
+		category, title, matched := matchWordlists(row[2], wordlists)
+		if !matched {
+			continue
+		}
 
-						incomes[keyCom].Monthly = append(incomes[keyCom].Monthly, incomeAmount)
-						incomes[keyCom].Total = incomes[keyCom].Total.Add(incomeAmount)
-						incomes[keyCom].Transactions[month] = append(incomes[keyCom].Transactions[month], Transaction{
-							Amount:     incomeAmount,
-							Date:       ddmmyyyy(date),
-							BillNumber: row[1],
-							Noted:      row[2],
-						})
+		transaction := Transaction{
+			Amount:     incomeAmount,
+			Date:       ddmmyyyy(date),
+			BillNumber: row[1],
+			Noted:      row[2],
+		}
 
-					case SourceAllowance:
-						if _, ok := incomes[keyAw]; !ok {
-							incomes[keyAw] = &statCal{
-								Transactions: make(map[string][]Transaction),
-								AverageMonth: make(map[string]decimal.Decimal),
-							}
-						}
+		// Valid row detected
+		valid = true
 
-						incomes[keyAw].Monthly = append(incomes[keyAw].Monthly, incomeAmount)
-						incomes[keyAw].Total = incomes[keyAw].Total.Add(incomeAmount)
-						incomes[keyAw].AverageMonth[title] = defaultMonths
-						incomes[keyAw].Transactions[title] = append(incomes[keyAw].Transactions[title], Transaction{
-							Amount:     incomeAmount,
-							Date:       ddmmyyyy(date),
-							BillNumber: row[1],
-							Noted:      row[2],
-						})
-					}
+		switch category {
+		case SourceSalary:
+			if _, ok := incomes[keySy]; !ok {
+				incomes[keySy] = &statCal{
+					Transactions: make(map[string][]Transaction),
 				}
 			}
+			incomes[keySy].Monthly = append(incomes[keySy].Monthly, incomeAmount)
+			incomes[keySy].Total = incomes[keySy].Total.Add(incomeAmount)
+			incomes[keySy].Transactions[month] = append(incomes[keySy].Transactions[month], transaction)
+
+		case SourceCommission:
+			if _, ok := incomes[keyCom]; !ok {
+				incomes[keyCom] = &statCal{
+					Transactions: make(map[string][]Transaction),
+				}
+			}
+			incomes[keyCom].Monthly = append(incomes[keyCom].Monthly, incomeAmount)
+			incomes[keyCom].Total = incomes[keyCom].Total.Add(incomeAmount)
+			incomes[keyCom].Transactions[month] = append(incomes[keyCom].Transactions[month], transaction)
+
+		case SourceAllowance:
+			if _, ok := incomes[keyAw]; !ok {
+				incomes[keyAw] = &statCal{
+					Transactions: make(map[string][]Transaction),
+					AverageMonth: make(map[string]decimal.Decimal),
+				}
+			}
+			incomes[keyAw].Monthly = append(incomes[keyAw].Monthly, incomeAmount)
+			incomes[keyAw].Total = incomes[keyAw].Total.Add(incomeAmount)
+			incomes[keyAw].AverageMonth[title] = defaultMonths
+			incomes[keyAw].Transactions[title] = append(incomes[keyAw].Transactions[title], transaction)
 		}
+	}
+
+	if !valid {
+		return nil, fmt.Errorf("no valid income transactions found in the statement file %s", statement.Name)
 	}
 
 	period := countMonth(from, to)
