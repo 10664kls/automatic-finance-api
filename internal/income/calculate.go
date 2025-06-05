@@ -548,6 +548,29 @@ func listCalculations(ctx context.Context, db *sql.DB, in *CalculationQuery) ([]
 	return calculations, nil
 }
 
+func isCalculationExists(ctx context.Context, db *sql.DB, number string) (bool, error) {
+	q, args := sq.Select("TOP 1 number").
+		From("statement_file_analysis").
+		Where(sq.Eq{
+			"number": number,
+			"status": StatusCompleted.String(),
+		}).
+		PlaceholderFormat(sq.AtP).
+		MustSql()
+
+	row := db.QueryRowContext(ctx, q, args...)
+	var n string
+	err := row.Scan(&n)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil // No calculation found
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to check if calculation exists: %w", err)
+	}
+
+	return n != "", nil // Calculation exists if number is not empty
+}
+
 func getCalculation(ctx context.Context, db *sql.DB, in *CalculationQuery) (*Calculation, error) {
 	in.PageSize = 1
 

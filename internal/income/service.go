@@ -164,6 +164,17 @@ func (s *Service) CalculateIncome(ctx context.Context, in *CalculateReq) (*Calcu
 		return nil, err
 	}
 
+	exists, err := isCalculationExists(ctx, s.db, in.Number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if calculation exists: %w", err)
+	}
+	if exists {
+		return nil, rpcStatus.New(
+			codes.AlreadyExists,
+			"Calculation with this number already exists. Please use a different number.",
+		).Err()
+	}
+
 	statementFile, err := getStatementFileByName(ctx, s.db, in.StatementFileName)
 	if errors.Is(err, ErrStatementFileNotFound) {
 		s, _ := rpcStatus.New(
@@ -288,6 +299,9 @@ func (s *Service) ReCalculateIncome(ctx context.Context, in *RecalculateReq) (*C
 	if err != nil {
 		zlog.Error("failed to get calculation by number", zap.Error(err))
 		return nil, err
+	}
+	if calculation.IsCompleted() {
+		return nil, rpcStatus.Error(codes.FailedPrecondition, "This calculation is already completed and cannot be recalculated")
 	}
 
 	if err := calculation.ReCalculate(claims.Username, in); err != nil {
