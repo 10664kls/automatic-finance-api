@@ -553,7 +553,6 @@ func isCalculationExists(ctx context.Context, db *sql.DB, number string) (bool, 
 		From("statement_file_analysis").
 		Where(sq.Eq{
 			"number": number,
-			"status": StatusCompleted.String(),
 		}).
 		PlaceholderFormat(sq.AtP).
 		MustSql()
