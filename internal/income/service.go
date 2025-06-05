@@ -442,12 +442,18 @@ func (s *Service) GetIncomeTransactionByBillNumber(ctx context.Context, in *GetT
 
 	const sheetName = "Table 1"
 
-	rows, err := f.GetRows(sheetName)
+	rows, err := f.Rows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows: %w", err)
 	}
+	defer rows.Close()
 
-	for _, row := range rows {
+	for rows.Next() {
+		row, err := rows.Columns()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get row columns: %w", err)
+		}
+
 		if len(row) > 4 {
 			incomeAmount, err := decimal.NewFromString(strings.ReplaceAll(row[4], ",", ""))
 			if err != nil {
@@ -483,13 +489,19 @@ func (s *Service) listTransactionFromStatementFile(ctx context.Context, txReq *T
 
 	const sheetName = "Table 1"
 
-	rows, err := f.GetRows(sheetName)
+	rows, err := f.Rows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows: %w", err)
 	}
+	defer rows.Close()
 
 	txs := make([]*Transaction, 0)
-	for _, row := range rows {
+	for rows.Next() {
+		row, err := rows.Columns()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get row columns: %w", err)
+		}
+
 		if len(row) > 4 {
 			incomeAmount, err := decimal.NewFromString(strings.ReplaceAll(row[4], ",", ""))
 			if err != nil {
@@ -563,17 +575,23 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 		return nil, err
 	}
 
-	rows, err := f.GetRows(sheetName)
+	rows, err := f.Rows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows from sheet %s: %w", sheetName, err)
 	}
+	defer rows.Close()
 
 	incomes := make(statMap, 0)
 	keyAw := SourceAllowance.String()
 	keySy := SourceSalary.String()
 	keyCom := SourceCommission.String()
 	defaultMonths := decimal.NewFromInt(12)
-	for _, row := range rows[20:] {
+	for rows.Next() {
+		row, err := rows.Columns()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get row columns: %w", err)
+		}
+
 		if len(row) > 4 {
 			incomeAmount, err := decimal.NewFromString(strings.ReplaceAll(row[4], ",", ""))
 			if err != nil {
