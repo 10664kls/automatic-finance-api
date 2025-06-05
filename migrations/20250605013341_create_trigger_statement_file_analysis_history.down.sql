@@ -1,0 +1,1 @@
+DROP TRIGGER statement_file_analysis_update;

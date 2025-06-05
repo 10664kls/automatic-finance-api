@@ -1,0 +1,1 @@
+DROP TABLE statement_file_analysis_history;
