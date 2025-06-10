@@ -1,6 +1,7 @@
 package income
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/10664kls/automatic-finance-api/internal/auth"
@@ -24,6 +26,7 @@ import (
 type Service struct {
 	currency *currency.Service
 	db       *sql.DB
+	mu       *sync.Mutex
 	zlog     *zap.Logger
 }
 
@@ -42,6 +45,7 @@ func NewService(_ context.Context, db *sql.DB, currency *currency.Service, zlog 
 		db:       db,
 		currency: currency,
 		zlog:     zlog,
+		mu:       new(sync.Mutex),
 	}, nil
 }
 
@@ -478,6 +482,38 @@ func (s *Service) GetIncomeTransactionByBillNumber(ctx context.Context, in *GetT
 	}
 
 	return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this resource or (it may not exist)")
+}
+
+func (s *Service) ExportCalculationsToExcel(ctx context.Context, in *BatchGetCalculationsQuery) (*bytes.Buffer, error) {
+	return s.exportCalculationsToExcel(ctx, in)
+}
+
+func (s *Service) ExportCalculationToExcelByNumber(ctx context.Context, number string) (*bytes.Buffer, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Method", "ExportCalculationToExcelByNumber"),
+		zap.String("Username", claims.Username),
+		zap.String("Number", number),
+	)
+
+	calculation, err := getCalculation(ctx, s.db, &CalculationQuery{
+		Number: number,
+	})
+	if errors.Is(err, ErrCalculationNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this resource or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get calculation by number", zap.Error(err))
+		return nil, err
+	}
+
+	buf, err := exportCalculationToExcel(ctx, calculation)
+	if err != nil {
+		zlog.Error("failed to export calculation to excel", zap.Error(err))
+		return nil, err
+	}
+
+	return buf, nil
 }
 
 func (s *Service) listTransactionFromStatementFile(ctx context.Context, txReq *TransactionReq, wordlists []*Wordlist, statement *StatementFile) ([]*Transaction, error) {

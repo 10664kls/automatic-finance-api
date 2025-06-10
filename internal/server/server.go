@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/10664kls/automatic-finance-api/internal/auth"
@@ -74,6 +75,8 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.POST("/incomes/calculations/:number/complete", s.completeIncomeCalculation, mws...)
 	v1.POST("/incomes/calculations/:number/transactions", s.listIncomeTransactionsByNumber, mws...)
 	v1.GET("/incomes/calculations/:number/transactions/:billNumber", s.getIncomeTransactionByBillNumber, mws...)
+	v1.GET("/incomes/calculations/:number/export-to-excel", s.exportCalculationToExcelByNumber, mws...)
+	v1.GET("/incomes/calculations/export-to-excel", s.exportCalculationsToExcel, mws...)
 
 	v1.GET("/incomes/wordlists", s.listIncomeWordlists, mws...)
 	v1.GET("/incomes/wordlists/:id", s.getIncomeWordlistByID, mws...)
@@ -528,4 +531,33 @@ func (s *Server) completeIncomeCalculation(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{
 		"calculation": calculation,
 	})
+}
+
+func (s *Server) exportCalculationToExcelByNumber(c echo.Context) error {
+	buf, err := s.income.ExportCalculationToExcelByNumber(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="Income_calculation_%s.xlsx"`, c.Param("number")))
+
+	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
+}
+
+func (s *Server) exportCalculationsToExcel(c echo.Context) error {
+	req := new(income.BatchGetCalculationsQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	buf, err := s.income.ExportCalculationsToExcel(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="Income_calculations.xlsx"`))
+
+	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
 }

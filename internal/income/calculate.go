@@ -683,3 +683,163 @@ func (r *GetTransactionReq) Validate() error {
 
 	return nil
 }
+
+type BatchGetCalculationsQuery struct {
+	ID                 int64     `query:"id"`
+	Product            string    `query:"product"`
+	Number             string    `query:"number"`
+	AccountDisplayName string    `query:"accountDisplayName"`
+	CreatedAfter       time.Time `query:"createdAfter"`
+	CreatedBefore      time.Time `query:"createdBefore"`
+
+	nextID int64
+}
+
+func (q *BatchGetCalculationsQuery) ToSQL() (string, []any, error) {
+	and := sq.And{}
+	if q.ID != 0 {
+		and = append(and, sq.Eq{"id": q.ID})
+	}
+	if q.Product != "" {
+		and = append(and, sq.Eq{"product": q.Product})
+	}
+	if q.Number != "" {
+		and = append(and, sq.Expr("number LIKE ?", "%"+q.Number+"%"))
+	}
+	if q.AccountDisplayName != "" {
+		and = append(and, sq.Expr("account_display_name LIKE ?", "%"+q.AccountDisplayName+"%"))
+	}
+
+	if !q.CreatedAfter.IsZero() {
+		and = append(and, sq.GtOrEq{"created_at": q.CreatedAfter})
+	}
+
+	if !q.CreatedBefore.IsZero() {
+		and = append(and, sq.LtOrEq{"created_at": q.CreatedBefore})
+	}
+
+	if q.nextID > 0 {
+		and = append(and, sq.Lt{"id": q.nextID})
+	}
+
+	return and.ToSql()
+}
+
+func batchGetCalculations(ctx context.Context, db *sql.DB, batchSize int, nextID int64, in *BatchGetCalculationsQuery) ([]*Calculation, error) {
+	id := fmt.Sprintf("TOP %d id", batchSize)
+	in.nextID = nextID
+	pred, args, err := in.ToSQL()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	q, args := sq.Select(
+		id,
+		"statement_file_name",
+		"number",
+		"product",
+		"account_currency",
+		"account_number",
+		"account_display_name",
+		"exchange_rate",
+		"total_income",
+		"total_basic_salary",
+		"total_other_income",
+		"monthly_net_income",
+		"monthly_average_income",
+		"period_in_month",
+		"started_at",
+		"ended_at",
+		"status",
+		"source_income",
+		"monthly_salary",
+		"allowance",
+		"commission",
+		"created_by",
+		"created_at",
+		"updated_by",
+		"updated_at",
+	).
+		From("statement_file_analysis").
+		Where(pred, args...).
+		OrderBy("ID DESC").
+		PlaceholderFormat(sq.AtP).
+		MustSql()
+
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list calculations: %w", err)
+	}
+	defer rows.Close()
+
+	calculations := make([]*Calculation, 0)
+	for rows.Next() {
+		c := new(Calculation)
+		var source, salaries, allowances, commissions []byte
+		err := rows.Scan(
+			&c.ID,
+			&c.StatementFileName,
+			&c.Number,
+			&c.Product,
+			&c.Account.Currency,
+			&c.Account.Number,
+			&c.Account.DisplayName,
+			&c.ExchangeRate,
+			&c.TotalIncome,
+			&c.TotalBasicSalary,
+			&c.TotalOtherIncome,
+			&c.MonthlyNetIncome,
+			&c.MonthlyAverageIncome,
+			&c.PeriodInMonth,
+			&c.StartedAt,
+			&c.EndedAt,
+			&c.Status,
+			&source,
+			&salaries,
+			&allowances,
+			&commissions,
+			&c.CreatedBy,
+			&c.CreatedAt,
+			&c.UpdatedBy,
+			&c.UpdatedAt,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCalculationNotFound
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan calculation: %w", err)
+		}
+
+		component := new(Source)
+		if err := json.Unmarshal(source, component); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal source: %w", err)
+		}
+
+		salaryBreakdown := new(SalaryBreakdown)
+		if err := json.Unmarshal(salaries, salaryBreakdown); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal salary breakdown: %w", err)
+		}
+
+		allowanceBreakdown := new(AllowanceBreakdown)
+		if err := json.Unmarshal(allowances, allowanceBreakdown); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal allowance breakdown: %w", err)
+		}
+
+		commissionBreakdown := new(CommissionBreakdown)
+		if err := json.Unmarshal(commissions, commissionBreakdown); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal commission breakdown: %w", err)
+		}
+
+		c.Source = component
+		c.SalaryBreakdown = salaryBreakdown
+		c.AllowanceBreakdown = allowanceBreakdown
+		c.CommissionBreakdown = commissionBreakdown
+
+		calculations = append(calculations, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over calculations: %w", err)
+	}
+
+	return calculations, nil
+}
