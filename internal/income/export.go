@@ -207,10 +207,11 @@ func setSummaryToExcelForProductPLAndSF(f *excelize.File, numberStyle, fontStyle
 	f.SetCellStyle(sheetName, "C16", "I16", numberStyle)
 
 	f.SetCellValue(sheetName, "B17", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
+	f.SetCellStyle(sheetName, "B17", "B17", fontStyle)
+
 	f.MergeCell(sheetName, "C17", "I17")
 	f.SetCellValue(sheetName, "C17", calculation.MonthlyNetIncome.IntPart())
-	f.SetCellStyle(sheetName, "B17", "I17", numberStyle)
-	f.SetCellStyle(sheetName, "B17", "I17", fontStyle)
+	f.SetCellStyle(sheetName, "C17", "I17", numberStyle)
 
 }
 
@@ -271,10 +272,11 @@ func setSummaryToExcelForProductSA(f *excelize.File, numberStyle, fontStyle int,
 	f.SetCellStyle(sheetName, "C13", "I13", numberStyle)
 
 	f.SetCellValue(sheetName, "B14", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
+	f.SetCellStyle(sheetName, "B14", "B14", fontStyle)
+
 	f.MergeCell(sheetName, "C14", "I14")
 	f.SetCellValue(sheetName, "C14", calculation.MonthlyNetIncome.IntPart())
-	f.SetCellStyle(sheetName, "B14", "I14", numberStyle)
-	f.SetCellStyle(sheetName, "B14", "I14", fontStyle)
+	f.SetCellStyle(sheetName, "C14", "I14", numberStyle)
 }
 
 func setSalaryToExcel(f *excelize.File, numberStyle, fontStyle int, sheetName string, calculation *Calculation) error {
