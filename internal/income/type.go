@@ -214,6 +214,10 @@ func (y *mmyyyy) Scan(src any) error {
 		}
 		*y = mmyyyy(t)
 		return nil
+
+	case time.Time:
+		*y = mmyyyy(src)
+		return nil
 	}
 
 	return fmt.Errorf("invalid yyyymm: %v", src)
@@ -272,6 +276,11 @@ func (y *ddmmyyyy) Scan(src any) error {
 		}
 		*y = ddmmyyyy(t)
 		return nil
+
+	case time.Time:
+		*y = ddmmyyyy(src)
+		return nil
+
 	}
 
 	return fmt.Errorf("invalid yyyymm: %v", src)
