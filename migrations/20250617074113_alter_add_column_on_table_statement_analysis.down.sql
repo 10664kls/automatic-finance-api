@@ -1,0 +1,2 @@
+ALTER TABLE statement_file_analysis 
+  DROP COLUMN eighty_percent_of_monthly_other_income, monthly_other_income;
