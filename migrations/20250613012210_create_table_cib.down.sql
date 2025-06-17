@@ -1,0 +1,1 @@
+DROP TABLE cib_file, cib_file_analysis;
