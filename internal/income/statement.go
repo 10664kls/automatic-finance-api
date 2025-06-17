@@ -38,19 +38,19 @@ type StatementFile struct {
 
 	// Public URL is the signed url to download the file.
 	// For output at first time only, not save to DB.
-	PublicURL string `json:"publicUrl"`
+	PublicURL string `json:"publicUrl,omitempty"`
 }
 
 func (s *Service) SignedURL(ctx context.Context, in *StatementFile) string {
 	return fmt.Sprintf("%s/v1/files/%s?signature=%s", os.Getenv("BACKEND_URL"), in.Name, signedURL(in))
 }
 
-type FileStatementReq struct {
+type StatementFileReq struct {
 	OriginalName string
 	ReadSeeker   io.ReadSeeker
 }
 
-func (s *Service) UploadStatement(ctx context.Context, in *FileStatementReq) (*StatementFile, error) {
+func (s *Service) UploadStatement(ctx context.Context, in *StatementFileReq) (*StatementFile, error) {
 	claims := auth.ClaimsFromContext(ctx)
 
 	zlog := s.zlog.With(
