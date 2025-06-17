@@ -725,10 +725,6 @@ func newSourceIncome(m statMap, product product, period decimal.Decimal) *Source
 			Total:          m.totalBasicSalary(product, period),
 			MonthlyAverage: m.basicSalary(product, period),
 		},
-		Other: Breakdown{
-			Total:          m.totalOtherIncome(period),
-			MonthlyAverage: m.averageOtherIncomeIn80Percent(period),
-		},
 	}
 }
 
@@ -801,6 +797,10 @@ func (s statMap) totalBasicSalary(product product, period decimal.Decimal) decim
 }
 
 func (s statMap) totalOtherIncome(period decimal.Decimal) decimal.Decimal {
+	if period.IsZero() {
+		return decimal.Zero
+	}
+
 	o := s.totalIncome(ProductPL).Sub(s.totalBasicSalary(ProductPL, period))
 	if o.LessThan(decimal.Zero) {
 		return decimal.Zero
@@ -1104,7 +1104,6 @@ func getMonthWithYYYYMM(s string) string {
 }
 
 type CalculateReq struct {
-	fileID            int64
 	Number            string  `json:"number"`
 	Product           product `json:"product"`
 	StatementFileName string  `json:"statementFileName"`

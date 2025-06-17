@@ -172,7 +172,7 @@ func setSummaryToExcelForProductPLAndSF(f *excelize.File, numberStyle, fontStyle
 
 	f.SetCellValue(sheetName, "B9", "ສະເລ່ຍລາຍໄດ້ອື່ນ")
 	f.MergeCell(sheetName, "C9", "I9")
-	f.SetCellValue(sheetName, "C9", calculation.TotalOtherIncome.IntPart())
+	f.SetCellValue(sheetName, "C9", calculation.MonthlyOtherIncome.IntPart())
 	f.SetCellStyle(sheetName, "B9", "I9", numberStyle)
 
 	f.SetCellValue(sheetName, "B10", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: COM/OT")
@@ -187,7 +187,7 @@ func setSummaryToExcelForProductPLAndSF(f *excelize.File, numberStyle, fontStyle
 
 	f.SetCellValue(sheetName, "B12", "ສະເລ່ຍລາຍໄດ້ອື່ນໆ(80%)")
 	f.MergeCell(sheetName, "C12", "I12")
-	f.SetCellValue(sheetName, "C12", calculation.Source.Other.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, "C12", calculation.EightyPercentOfMonthlyOtherIncome.IntPart())
 	f.SetCellStyle(sheetName, "B12", "I12", numberStyle)
 
 	f.SetCellValue(sheetName, "B13", "ເງິນເດືອນພື້ນຖານ")

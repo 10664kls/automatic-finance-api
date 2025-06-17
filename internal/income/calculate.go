@@ -21,25 +21,27 @@ import (
 var ErrCalculationNotFound = fmt.Errorf("calculation not found")
 
 type Calculation struct {
-	ID                   int64           `json:"id"`
-	StatementFileName    string          `json:"statementFileName"`
-	Number               string          `json:"number"`
-	Product              product         `json:"product"`
-	Account              Account         `json:"account"`
-	ExchangeRate         decimal.Decimal `json:"exchangeRate"`
-	MonthlyAverageIncome decimal.Decimal `json:"monthlyAverageIncome"`
-	MonthlyNetIncome     decimal.Decimal `json:"monthlyNetIncome"`
-	TotalOtherIncome     decimal.Decimal `json:"totalOtherIncome"`
-	TotalBasicSalary     decimal.Decimal `json:"totalBasicSalary"`
-	TotalIncome          decimal.Decimal `json:"totalIncome"`
-	PeriodInMonth        decimal.Decimal `json:"periodInMonth"`
-	StartedAt            time.Time       `json:"startedAt"`
-	EndedAt              time.Time       `json:"endedAt"`
-	Status               status          `json:"status"`
-	CreatedBy            string          `json:"createdBy"`
-	UpdatedBy            string          `json:"updatedBy"`
-	CreatedAt            time.Time       `json:"createdAt"`
-	UpdatedAt            time.Time       `json:"updatedAt"`
+	ID                                int64           `json:"id"`
+	StatementFileName                 string          `json:"statementFileName"`
+	Number                            string          `json:"number"`
+	Product                           product         `json:"product"`
+	Account                           Account         `json:"account"`
+	ExchangeRate                      decimal.Decimal `json:"exchangeRate"`
+	MonthlyAverageIncome              decimal.Decimal `json:"monthlyAverageIncome"`
+	MonthlyNetIncome                  decimal.Decimal `json:"monthlyNetIncome"`
+	MonthlyOtherIncome                decimal.Decimal `json:"monthlyOtherIncome"`
+	EightyPercentOfMonthlyOtherIncome decimal.Decimal `json:"eightyPercentOfMonthlyOtherIncome"`
+	TotalOtherIncome                  decimal.Decimal `json:"totalOtherIncome"`
+	TotalBasicSalary                  decimal.Decimal `json:"totalBasicSalary"`
+	TotalIncome                       decimal.Decimal `json:"totalIncome"`
+	PeriodInMonth                     decimal.Decimal `json:"periodInMonth"`
+	StartedAt                         time.Time       `json:"startedAt"`
+	EndedAt                           time.Time       `json:"endedAt"`
+	Status                            status          `json:"status"`
+	CreatedBy                         string          `json:"createdBy"`
+	UpdatedBy                         string          `json:"updatedBy"`
+	CreatedAt                         time.Time       `json:"createdAt"`
+	UpdatedAt                         time.Time       `json:"updatedAt"`
 
 	SalaryBreakdown     *SalaryBreakdown     `json:"salaryBreakdown"`
 	AllowanceBreakdown  *AllowanceBreakdown  `json:"allowanceBreakdown"`
@@ -100,6 +102,8 @@ func (c *Calculation) populate(product product, period, exchangeRate decimal.Dec
 	c.TotalBasicSalary = incomes.totalBasicSalary(product, period)
 	c.TotalIncome = incomes.totalIncome(product)
 	c.TotalOtherIncome = incomes.totalOtherIncome(period)
+	c.MonthlyOtherIncome = incomes.averageOtherIncome(period)
+	c.EightyPercentOfMonthlyOtherIncome = incomes.averageOtherIncomeIn80Percent(period)
 	c.MonthlyAverageIncome = incomes.averageMonthlyIncome(product, period)
 	c.MonthlyNetIncome = incomes.netIncomeMonthly(product, exchangeRate, period)
 	c.ExchangeRate = exchangeRate
@@ -121,7 +125,6 @@ type Source struct {
 	BasicSalary Breakdown `json:"basicSalary"`
 	Allowance   Breakdown `json:"allowance"`
 	Commission  Breakdown `json:"commission"`
-	Other       Breakdown `json:"other"`
 }
 
 func (s *Source) Bytes() []byte {
@@ -202,20 +205,22 @@ func (l *CommissionBreakdown) Bytes() []byte {
 func newCalculation(by string, number, statementFileName string, product product) *Calculation {
 	now := time.Now()
 	return &Calculation{
-		Number:               number,
-		StatementFileName:    statementFileName,
-		Product:              product,
-		ExchangeRate:         decimal.NewFromInt(1),
-		MonthlyAverageIncome: decimal.Zero,
-		MonthlyNetIncome:     decimal.Zero,
-		TotalOtherIncome:     decimal.Zero,
-		TotalBasicSalary:     decimal.Zero,
-		TotalIncome:          decimal.Zero,
-		Status:               StatusPending,
-		CreatedBy:            by,
-		CreatedAt:            now,
-		UpdatedBy:            by,
-		UpdatedAt:            now,
+		Number:                            number,
+		StatementFileName:                 statementFileName,
+		Product:                           product,
+		ExchangeRate:                      decimal.NewFromInt(1),
+		MonthlyAverageIncome:              decimal.Zero,
+		MonthlyNetIncome:                  decimal.Zero,
+		MonthlyOtherIncome:                decimal.Zero,
+		EightyPercentOfMonthlyOtherIncome: decimal.Zero,
+		TotalOtherIncome:                  decimal.Zero,
+		TotalBasicSalary:                  decimal.Zero,
+		TotalIncome:                       decimal.Zero,
+		Status:                            StatusPending,
+		CreatedBy:                         by,
+		CreatedAt:                         now,
+		UpdatedBy:                         by,
+		UpdatedAt:                         now,
 	}
 }
 
@@ -298,7 +303,7 @@ func (q *CalculationQuery) ToSQL() (string, []any, error) {
 		and = append(and, sq.Eq{"product": q.Product})
 	}
 	if q.Number != "" {
-		and = append(and, sq.Expr("number LIKE ?", "%"+q.Number+"%"))
+		and = append(and, sq.Eq{"number": q.Number})
 	}
 	if q.AccountDisplayName != "" {
 		and = append(and, sq.Expr("account_display_name LIKE ?", "%"+q.AccountDisplayName+"%"))
@@ -336,6 +341,8 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 			Set("total_income", in.TotalIncome).
 			Set("total_basic_salary", in.TotalBasicSalary).
 			Set("total_other_income", in.TotalOtherIncome).
+			Set("monthly_other_income", in.MonthlyOtherIncome).
+			Set("eighty_percent_of_monthly_other_income", in.EightyPercentOfMonthlyOtherIncome).
 			Set("monthly_net_income", in.MonthlyNetIncome).
 			Set("monthly_average_income", in.MonthlyAverageIncome).
 			Set("period_in_month", in.PeriodInMonth).
@@ -377,6 +384,8 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 					"total_income",
 					"total_basic_salary",
 					"total_other_income",
+					"eighty_percent_of_monthly_other_income",
+					"monthly_other_income",
 					"monthly_net_income",
 					"monthly_average_income",
 					"period_in_month",
@@ -401,6 +410,8 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 					in.TotalIncome,
 					in.TotalBasicSalary,
 					in.TotalOtherIncome,
+					in.EightyPercentOfMonthlyOtherIncome,
+					in.MonthlyOtherIncome,
 					in.MonthlyNetIncome,
 					in.MonthlyAverageIncome,
 					in.PeriodInMonth,
@@ -449,6 +460,8 @@ func listCalculations(ctx context.Context, db *sql.DB, in *CalculationQuery) ([]
 		"total_income",
 		"total_basic_salary",
 		"total_other_income",
+		"eighty_percent_of_monthly_other_income",
+		"monthly_other_income",
 		"monthly_net_income",
 		"monthly_average_income",
 		"period_in_month",
@@ -492,6 +505,8 @@ func listCalculations(ctx context.Context, db *sql.DB, in *CalculationQuery) ([]
 			&c.TotalIncome,
 			&c.TotalBasicSalary,
 			&c.TotalOtherIncome,
+			&c.EightyPercentOfMonthlyOtherIncome,
+			&c.MonthlyOtherIncome,
 			&c.MonthlyNetIncome,
 			&c.MonthlyAverageIncome,
 			&c.PeriodInMonth,
