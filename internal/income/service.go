@@ -279,10 +279,11 @@ func (s *Service) ListCalculations(ctx context.Context, in *CalculationQuery) (*
 }
 
 type RecalculateReq struct {
-	Number          string          `param:"number"`
-	MonthlySalaries []MonthlySalary `json:"monthlySalaries"`
-	Allowances      []Allowance     `json:"allowances"`
-	Commissions     []Commission    `json:"commissions"`
+	Number                   string          `param:"number"`
+	BasicSalaryFromInterview decimal.Decimal `json:"basicSalaryFromInterview"`
+	MonthlySalaries          []MonthlySalary `json:"monthlySalaries"`
+	Allowances               []Allowance     `json:"allowances"`
+	Commissions              []Commission    `json:"commissions"`
 }
 
 func (s *Service) ReCalculateIncome(ctx context.Context, in *RecalculateReq) (*Calculation, error) {
@@ -765,6 +766,15 @@ func (s statMap) totalIncome(product product) decimal.Decimal {
 	return decimal.Zero
 }
 
+func (s statMap) basicSalaryFromInterview() decimal.Decimal {
+	raw, ok := s[SourceBasicSalaryInterview.String()]
+	if !ok {
+		return decimal.Zero
+	}
+
+	return raw.Total
+}
+
 func (s statMap) totalBasicSalary(product product, period decimal.Decimal) decimal.Decimal {
 	if period.IsZero() {
 		return decimal.Zero
@@ -841,13 +851,27 @@ func (s statMap) averageOtherIncomeIn80Percent(period decimal.Decimal) decimal.D
 func (s statMap) averageMonthlyIncome(product product, period decimal.Decimal) decimal.Decimal {
 	switch product {
 	case ProductSA:
-		return s.basicSalary(ProductSA, period).
+		basic := s.basicSalary(ProductSA, period)
+		interview := s.basicSalaryFromInterview()
+		if interview.GreaterThan(decimal.Zero) && interview.LessThan(basic) {
+			return interview.
+				Add(s.averageAllowance(period)).
+				Add(s.averageCommission(period)).Floor()
+		}
+
+		return basic.
 			Add(s.averageAllowance(period)).
 			Add(s.averageCommission(period)).Floor()
 
 	case ProductPL, ProductSF:
 		otherIn80Percent := s.averageOtherIncomeIn80Percent(period)
-		return s.basicSalary(product, period).Add(otherIn80Percent)
+		basic := s.basicSalary(product, period)
+		interview := s.basicSalaryFromInterview()
+		if interview.GreaterThan(decimal.Zero) && interview.LessThan(basic) {
+			return interview.Add(otherIn80Percent)
+		}
+
+		return basic.Add(otherIn80Percent)
 	}
 
 	return decimal.Zero

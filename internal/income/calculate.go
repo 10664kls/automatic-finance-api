@@ -27,6 +27,7 @@ type Calculation struct {
 	Product                           product         `json:"product"`
 	Account                           Account         `json:"account"`
 	ExchangeRate                      decimal.Decimal `json:"exchangeRate"`
+	BasicSalaryFromInterview          decimal.Decimal `json:"basicSalaryFromInterview"`
 	MonthlyAverageIncome              decimal.Decimal `json:"monthlyAverageIncome"`
 	MonthlyNetIncome                  decimal.Decimal `json:"monthlyNetIncome"`
 	MonthlyOtherIncome                decimal.Decimal `json:"monthlyOtherIncome"`
@@ -53,6 +54,7 @@ func (c *Calculation) ReCalculate(by string, in *RecalculateReq) error {
 	c.SalaryBreakdown = newSalaryBreakdown(in.MonthlySalaries)
 	c.AllowanceBreakdown = newAllowanceBreakdown(in.Allowances)
 	c.CommissionBreakdown = newCommissionBreakdown(in.Commissions)
+	c.BasicSalaryFromInterview = in.BasicSalaryFromInterview
 
 	mapCal, err := c.toStateMap()
 	if err != nil {
@@ -95,6 +97,7 @@ func newCommissionBreakdown(commissions []Commission) *CommissionBreakdown {
 
 func (c *Calculation) populate(product product, period, exchangeRate decimal.Decimal, incomes statMap) {
 	c.Source = newSourceIncome(incomes, product, period)
+	c.BasicSalaryFromInterview = incomes.basicSalaryFromInterview()
 	c.AllowanceBreakdown = incomes.toListAllowances()
 	c.CommissionBreakdown = incomes.toListCommissions(period)
 	c.SalaryBreakdown = incomes.toListMonthlySalaries()
@@ -209,6 +212,7 @@ func newCalculation(by string, number, statementFileName string, product product
 		StatementFileName:                 statementFileName,
 		Product:                           product,
 		ExchangeRate:                      decimal.NewFromInt(1),
+		BasicSalaryFromInterview:          decimal.Zero,
 		MonthlyAverageIncome:              decimal.Zero,
 		MonthlyNetIncome:                  decimal.Zero,
 		MonthlyOtherIncome:                decimal.Zero,
@@ -280,6 +284,10 @@ func (s *Calculation) toStateMap() (statMap, error) {
 		Total:        sumAmounts(salaryMonthly),
 	}
 
+	m[SourceBasicSalaryInterview.String()] = &statCal{
+		Total: s.BasicSalaryFromInterview,
+	}
+
 	return m, nil
 }
 
@@ -339,6 +347,7 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 			Set("account_display_name", in.Account.DisplayName).
 			Set("exchange_rate", in.ExchangeRate).
 			Set("total_income", in.TotalIncome).
+			Set("basic_salary_interview", in.BasicSalaryFromInterview).
 			Set("total_basic_salary", in.TotalBasicSalary).
 			Set("total_other_income", in.TotalOtherIncome).
 			Set("monthly_other_income", in.MonthlyOtherIncome).
@@ -381,6 +390,7 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 					"account_number",
 					"account_display_name",
 					"exchange_rate",
+					"basic_salary_interview",
 					"total_income",
 					"total_basic_salary",
 					"total_other_income",
@@ -407,6 +417,7 @@ func saveCalculationIncome(ctx context.Context, db *sql.DB, in *Calculation) err
 					in.Account.Number,
 					in.Account.DisplayName,
 					in.ExchangeRate,
+					in.BasicSalaryFromInterview,
 					in.TotalIncome,
 					in.TotalBasicSalary,
 					in.TotalOtherIncome,
@@ -457,6 +468,7 @@ func listCalculations(ctx context.Context, db *sql.DB, in *CalculationQuery) ([]
 		"account_number",
 		"account_display_name",
 		"exchange_rate",
+		"basic_salary_interview",
 		"total_income",
 		"total_basic_salary",
 		"total_other_income",
@@ -502,6 +514,7 @@ func listCalculations(ctx context.Context, db *sql.DB, in *CalculationQuery) ([]
 			&c.Account.Number,
 			&c.Account.DisplayName,
 			&c.ExchangeRate,
+			&c.BasicSalaryFromInterview,
 			&c.TotalIncome,
 			&c.TotalBasicSalary,
 			&c.TotalOtherIncome,

@@ -93,20 +93,23 @@ const (
 	SourceSalary
 	SourceAllowance
 	SourceCommission
+	SourceBasicSalaryInterview
 )
 
 var sourceNames = map[source]string{
-	SourceUnSpecified: "UNSPECIFIED",
-	SourceSalary:      "SALARY",
-	SourceAllowance:   "ALLOWANCE",
-	SourceCommission:  "COMMISSION",
+	SourceUnSpecified:          "UNSPECIFIED",
+	SourceSalary:               "SALARY",
+	SourceAllowance:            "ALLOWANCE",
+	SourceCommission:           "COMMISSION",
+	SourceBasicSalaryInterview: "BASIC_SALARY_INTERVIEW",
 }
 
 var sourceValues = map[string]source{
-	"UNSPECIFIED": SourceUnSpecified,
-	"SALARY":      SourceSalary,
-	"ALLOWANCE":   SourceAllowance,
-	"COMMISSION":  SourceCommission,
+	"UNSPECIFIED":            SourceUnSpecified,
+	"SALARY":                 SourceSalary,
+	"ALLOWANCE":              SourceAllowance,
+	"COMMISSION":             SourceCommission,
+	"BASIC_SALARY_INTERVIEW": SourceBasicSalaryInterview,
 }
 
 func (s source) String() string {
