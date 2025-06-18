@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/10664kls/automatic-finance-api/internal/auth"
+	"github.com/10664kls/automatic-finance-api/internal/cib"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/income"
 	"github.com/labstack/echo/v4"
@@ -19,9 +20,10 @@ type Server struct {
 	auth     *auth.Auth
 	currency *currency.Service
 	income   *income.Service
+	cib      *cib.Service
 }
 
-func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Service) (*Server, error) {
+func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Service, cib *cib.Service) (*Server, error) {
 	if auth == nil {
 		return nil, errors.New("auth service is nil")
 	}
@@ -31,11 +33,15 @@ func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Servi
 	if income == nil {
 		return nil, errors.New("income service is nil")
 	}
+	if cib == nil {
+		return nil, errors.New("cib service is nil")
+	}
 
 	return &Server{
 		auth:     auth,
 		currency: currency,
 		income:   income,
+		cib:      cib,
 	}, nil
 }
 
@@ -67,6 +73,8 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 
 	v1.POST("/files/statements", s.uploadStatement, mws...)
 	v1.GET("/files/statements/:name", s.downloadStatement, mws...)
+	v1.POST("/files/cib", s.uploadCIB, mws...)
+	v1.GET("/files/cib/:name", s.downloadCIB, mws...)
 
 	v1.POST("/incomes/calculations", s.calculateIncome, mws...)
 	v1.GET("/incomes/calculations", s.listIncomeCalculations, mws...)
@@ -82,6 +90,10 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.GET("/incomes/wordlists/:id", s.getIncomeWordlistByID, mws...)
 	v1.POST("/incomes/wordlists", s.createIncomeWordlist, mws...)
 	v1.PUT("/incomes/wordlists/:id", s.updateIncomeWordlist, mws...)
+
+	v1.GET("/cib/calculations", s.listCIBCalculations, mws...)
+	v1.GET("/cib/calculations/:number", s.getCIBCalculationByNumber, mws...)
+	v1.POST("/cib/calculations", s.calculateCIB, mws...)
 
 	return nil
 }
@@ -351,7 +363,7 @@ func (s *Server) uploadStatement(c echo.Context) error {
 	defer src.Close()
 
 	ctx := c.Request().Context()
-	sf, err := s.income.UploadStatement(ctx, &income.FileStatementReq{
+	sf, err := s.income.UploadStatement(ctx, &income.StatementFileReq{
 		ReadSeeker:   src,
 		OriginalName: f.Filename,
 	})
@@ -560,4 +572,94 @@ func (s *Server) exportCalculationsToExcel(c echo.Context) error {
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="Income_calculations.xlsx"`))
 
 	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
+}
+
+func (s *Server) calculateCIB(c echo.Context) error {
+	req := new(cib.CalculateReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	calculation, err := s.cib.CalculateCIB(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) getCIBCalculationByNumber(c echo.Context) error {
+	calculation, err := s.cib.GetCalculationByNumber(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) listCIBCalculations(c echo.Context) error {
+	req := new(cib.CalculationQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	calculations, err := s.cib.ListCalculations(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, calculations)
+}
+
+func (s *Server) uploadCIB(c echo.Context) error {
+	f, err := c.FormFile("file")
+	if errors.Is(err, http.ErrMissingFile) {
+		st, _ := status.New(codes.InvalidArgument, "File must not be empty.").
+			WithDetails(&edPb.BadRequest{
+				FieldViolations: []*edPb.BadRequest_FieldViolation{
+					{
+						Field:       "file",
+						Description: "File must not be empty.",
+					},
+				},
+			})
+		return st.Err()
+	}
+	if err != nil {
+		return err
+	}
+
+	src, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	ctx := c.Request().Context()
+	sf, err := s.cib.UploadCIB(ctx, &cib.CIBFileReq{
+		ReadSeeker:   src,
+		OriginalName: f.Filename,
+	})
+	if err != nil {
+		return err
+	}
+
+	sf.PublicURL = s.cib.SignedURL(ctx, sf)
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"metadata": sf,
+	})
+}
+
+func (s *Server) downloadCIB(c echo.Context) error {
+	name, signature := c.Param("name"), c.QueryParam("signature")
+	f, err := s.cib.GetCIBFile(c.Request().Context(), name, signature)
+	if err != nil {
+		return err
+	}
+	return c.Inline(f.Location, f.Name)
 }
