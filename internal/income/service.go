@@ -607,6 +607,10 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 	calculation.Account.DisplayName = extractAccount(rawAccountDisplayName)
 	calculation.Account.Currency = extractAccount(rawAccountCurrency)
 
+	if len(calculation.Account.Number) == 0 || len(calculation.Account.DisplayName) == 0 || len(strings.TrimSpace(calculation.Account.Currency)) != 3 {
+		return nil, fmt.Errorf("no valid income transactions found in the statement file %s", statement.Name)
+	}
+
 	currency, err := s.currency.GetCurrencyByCode(ctx, calculation.Account.Currency)
 	if err != nil {
 		return nil, err
@@ -623,7 +627,6 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 	keySy := SourceSalary.String()
 	keyCom := SourceCommission.String()
 	defaultMonths := decimal.NewFromInt(12)
-	var valid bool
 	for rows.Next() {
 		row, err := rows.Columns()
 		if err != nil {
@@ -665,9 +668,6 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 			Noted:      row[2],
 		}
 
-		// Valid row detected
-		valid = true
-
 		switch category {
 		case SourceSalary:
 			if _, ok := incomes[keySy]; !ok {
@@ -701,10 +701,6 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 			incomes[keyAw].AverageMonth[title] = defaultMonths
 			incomes[keyAw].Transactions[title] = append(incomes[keyAw].Transactions[title], transaction)
 		}
-	}
-
-	if !valid {
-		return nil, fmt.Errorf("no valid income transactions found in the statement file %s", statement.Name)
 	}
 
 	period := countMonth(from, to)
