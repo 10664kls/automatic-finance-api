@@ -569,7 +569,7 @@ func (s *Server) exportCalculationsToExcel(c echo.Context) error {
 	}
 
 	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="Income_calculations.xlsx"`))
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="Income_calculations.xlsx"`)
 
 	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
 }
