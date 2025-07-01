@@ -783,10 +783,10 @@ func (s statMap) totalBasicSalary(product product, period decimal.Decimal) decim
 			return decimal.Zero
 		}
 
-		return total.Div(period).Floor()
+		return total.Div(period)
 
 	case ProductPL, ProductSF:
-		return s.basicSalary(product, period).Mul(period).Floor()
+		return s.basicSalary(product, period).Mul(period)
 	}
 
 	return decimal.Zero
@@ -830,7 +830,7 @@ func (s statMap) averageOtherIncome(period decimal.Decimal) decimal.Decimal {
 		return decimal.Zero
 	}
 
-	return total.Div(period).Floor()
+	return total.Div(period)
 }
 
 func (s statMap) averageCommission(period decimal.Decimal) decimal.Decimal {
@@ -846,7 +846,7 @@ func (s statMap) averageOtherIncomeIn80Percent(period decimal.Decimal) decimal.D
 	other := s.averageOtherIncome(period)
 	other = other.Add(s.averageCommission(period))
 	other = other.Add(s.averageAllowance(period))
-	return other.Mul(decimal.NewFromFloat(0.8)).Floor()
+	return other.Mul(decimal.NewFromFloat(0.8))
 }
 
 func (s statMap) averageMonthlyIncome(product product, period decimal.Decimal) decimal.Decimal {
@@ -857,12 +857,12 @@ func (s statMap) averageMonthlyIncome(product product, period decimal.Decimal) d
 		if interview.GreaterThan(decimal.Zero) && interview.LessThan(basic) {
 			return interview.
 				Add(s.averageAllowance(period)).
-				Add(s.averageCommission(period)).Floor()
+				Add(s.averageCommission(period))
 		}
 
 		return basic.
 			Add(s.averageAllowance(period)).
-			Add(s.averageCommission(period)).Floor()
+			Add(s.averageCommission(period))
 
 	case ProductPL, ProductSF:
 		otherIn80Percent := s.averageOtherIncomeIn80Percent(period)
@@ -888,7 +888,7 @@ func (s statMap) netIncomeMonthly(product product, exchangeRate decimal.Decimal,
 		return decimal.Zero
 	}
 
-	return monthlyIncome.Mul(exchangeRate).Floor()
+	return monthlyIncome.Mul(exchangeRate)
 }
 
 func (s statMap) basicSalary(product product, period decimal.Decimal) decimal.Decimal {
@@ -903,7 +903,7 @@ func (s statMap) basicSalary(product product, period decimal.Decimal) decimal.De
 			return decimal.Zero
 		}
 
-		return total.Div(period).Floor()
+		return total.Div(period)
 
 	case ProductPL, ProductSF:
 		return findMinAmountFromMonthlySalaries(s.toListMonthlySalaries().MonthlySalaries)
@@ -931,7 +931,7 @@ func (s statMap) toListAllowances() *AllowanceBreakdown {
 		}
 
 		amount := sumTransactions(tx)
-		average := amount.Div(months).Floor()
+		average := amount.Div(months)
 		allowances = append(allowances, Allowance{
 			Title:          title,
 			Months:         months,
@@ -976,7 +976,7 @@ func (s statMap) toListCommissions(period decimal.Decimal) *CommissionBreakdown 
 
 	monthlyAverage := decimal.Zero
 	if !period.IsZero() {
-		monthlyAverage = raw.Total.Div(period).Floor()
+		monthlyAverage = raw.Total.Div(period)
 	}
 
 	return &CommissionBreakdown{

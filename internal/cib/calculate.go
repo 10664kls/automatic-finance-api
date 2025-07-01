@@ -295,7 +295,7 @@ func calculateTenPercentOfMonthlyAccruedBalance(outstandingBalance, interest dec
 	growthFactor := decimal.NewFromInt(1).Add(monthlyRate)
 	amountAfterInterest := outstandingBalance.Mul(growthFactor)
 
-	return amountAfterInterest.Mul(tenPercent).Floor()
+	return amountAfterInterest.Mul(tenPercent)
 }
 
 func calculatePrincipalPlusFlatInterestPayment(financeAmount decimal.Decimal, interest decimal.Decimal, period decimal.Decimal) decimal.Decimal {
@@ -305,7 +305,7 @@ func calculatePrincipalPlusFlatInterestPayment(financeAmount decimal.Decimal, in
 
 	hundred := decimal.NewFromInt(100)
 	rate := financeAmount.Mul(interest.Div(hundred))
-	return financeAmount.Div(period).Add(rate).Floor()
+	return financeAmount.Div(period).Add(rate)
 }
 
 func calculatePMT(interest decimal.Decimal, period decimal.Decimal, financeAmount decimal.Decimal) decimal.Decimal {
@@ -331,7 +331,7 @@ func calculatePMT(interest decimal.Decimal, period decimal.Decimal, financeAmoun
 	}
 
 	numerator := monthlyRate.Mul(financeAmount)
-	return numerator.Div(denominator).Floor()
+	return numerator.Div(denominator)
 }
 
 func countMonth(from, to time.Time) decimal.Decimal {
