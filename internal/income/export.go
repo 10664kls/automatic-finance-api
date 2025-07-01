@@ -19,7 +19,7 @@ func (s *Service) exportCalculationsToExcel(ctx context.Context, in *BatchGetCal
 	}
 	f.SetActiveSheet(sheet)
 
-	formatNumber := "#,##0"
+	formatNumber := "#,##0.00"
 	numberStyle, err := f.NewStyle(&excelize.Style{
 		CustomNumFmt: &formatNumber,
 		Font: &excelize.Font{
@@ -88,7 +88,7 @@ func exportCalculationToExcel(ctx context.Context, calculation *Calculation) (*b
 		return nil, fmt.Errorf("failed to create new sheet: %w", err)
 	}
 
-	formatNumber := "#,##0"
+	formatNumber := "#,##0.00"
 	numberStyle, err := f.NewStyle(&excelize.Style{
 		CustomNumFmt: &formatNumber,
 		Font: &excelize.Font{
@@ -162,55 +162,55 @@ func setSummaryToExcelForProductPLAndSF(f *excelize.File, numberStyle, fontStyle
 
 	f.SetCellValue(sheetName, "B7", "ລວມເງິນເດືອນພື້ນຖານ")
 	f.MergeCell(sheetName, "C7", "I7")
-	f.SetCellValue(sheetName, "C7", calculation.TotalBasicSalary.IntPart())
+	f.SetCellValue(sheetName, "C7", calculation.TotalBasicSalary.InexactFloat64())
 	f.SetCellStyle(sheetName, "B7", "I7", numberStyle)
 
 	f.SetCellValue(sheetName, "B8", "ລວມລາຍໄດ້ຈາກບັນຊີ:")
 	f.MergeCell(sheetName, "C8", "I8")
-	f.SetCellValue(sheetName, "C8", calculation.TotalIncome.IntPart())
+	f.SetCellValue(sheetName, "C8", calculation.TotalIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "B8", "I8", numberStyle)
 
 	f.SetCellValue(sheetName, "B9", "ສະເລ່ຍລາຍໄດ້ອື່ນ")
 	f.MergeCell(sheetName, "C9", "I9")
-	f.SetCellValue(sheetName, "C9", calculation.MonthlyOtherIncome.IntPart())
+	f.SetCellValue(sheetName, "C9", calculation.MonthlyOtherIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "B9", "I9", numberStyle)
 
 	f.SetCellValue(sheetName, "B10", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: COM/OT")
 	f.MergeCell(sheetName, "C10", "I10")
-	f.SetCellValue(sheetName, "C10", calculation.Source.Commission.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, "C10", calculation.Source.Commission.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B10", "I10", numberStyle)
 
 	f.SetCellValue(sheetName, "B11", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: Allowance")
 	f.MergeCell(sheetName, "C11", "I11")
-	f.SetCellValue(sheetName, "C11", calculation.Source.Allowance.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, "C11", calculation.Source.Allowance.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B11", "I11", numberStyle)
 
 	f.SetCellValue(sheetName, "B12", "ສະເລ່ຍລາຍໄດ້ອື່ນໆ(80%)")
 	f.MergeCell(sheetName, "C12", "I12")
-	f.SetCellValue(sheetName, "C12", calculation.EightyPercentOfMonthlyOtherIncome.IntPart())
+	f.SetCellValue(sheetName, "C12", calculation.EightyPercentOfMonthlyOtherIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "B12", "I12", numberStyle)
 
 	f.SetCellValue(sheetName, "B13", "ເງິນເດືອນພື້ນຖານ")
 	f.MergeCell(sheetName, "C13", "I13")
-	f.SetCellValue(sheetName, "C13", calculation.Source.BasicSalary.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, "C13", calculation.Source.BasicSalary.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B13", "I13", numberStyle)
 
 	f.SetCellValue(sheetName, "B14", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ")
 	f.MergeCell(sheetName, "C14", "I14")
-	f.SetCellValue(sheetName, "C14", calculation.MonthlyAverageIncome.IntPart())
+	f.SetCellValue(sheetName, "C14", calculation.MonthlyAverageIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "B14", "I14", numberStyle)
 
 	f.SetCellValue(sheetName, "B16", "ອັດຕາແລກປ່ຽນວັນທີ")
 	f.SetCellValue(sheetName, "C16", calculation.CreatedAt.Format("02/01/2006"))
 	f.MergeCell(sheetName, "D16", "I16")
-	f.SetCellValue(sheetName, "D16", calculation.ExchangeRate.IntPart())
+	f.SetCellValue(sheetName, "D16", calculation.ExchangeRate.InexactFloat64())
 	f.SetCellStyle(sheetName, "C16", "I16", numberStyle)
 
 	f.SetCellValue(sheetName, "B17", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
 	f.SetCellStyle(sheetName, "B17", "B17", fontStyle)
 
 	f.MergeCell(sheetName, "C17", "I17")
-	f.SetCellValue(sheetName, "C17", calculation.MonthlyNetIncome.IntPart())
+	f.SetCellValue(sheetName, "C17", calculation.MonthlyNetIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "C17", "I17", numberStyle)
 
 }
@@ -242,40 +242,40 @@ func setSummaryToExcelForProductSA(f *excelize.File, numberStyle, fontStyle int,
 
 	f.SetCellValue(sheetName, "B7", "ລວມລາຍໄດ້ຈາກບັນຊີ:")
 	f.MergeCell(sheetName, "C7", "I7")
-	f.SetCellValue(sheetName, "C7", calculation.TotalIncome.IntPart())
+	f.SetCellValue(sheetName, "C7", calculation.TotalIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "B7", "I7", numberStyle)
 
 	f.SetCellValue(sheetName, "B8", "ເງິນເດືອນພື້ນຖານ")
 	f.MergeCell(sheetName, "C8", "I8")
-	f.SetCellValue(sheetName, "C8", calculation.Source.BasicSalary.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, "C8", calculation.Source.BasicSalary.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B8", "I8", numberStyle)
 
 	f.SetCellValue(sheetName, "B9", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: COM/OT")
 	f.MergeCell(sheetName, "C9", "I9")
-	f.SetCellValue(sheetName, "C9", calculation.Source.Commission.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, "C9", calculation.Source.Commission.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B9", "I9", numberStyle)
 
 	f.SetCellValue(sheetName, "B10", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: Allowance")
 	f.MergeCell(sheetName, "C10", "I10")
-	f.SetCellValue(sheetName, "C10", calculation.Source.Allowance.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, "C10", calculation.Source.Allowance.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B10", "I10", numberStyle)
 
 	f.SetCellValue(sheetName, "B11", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ")
 	f.MergeCell(sheetName, "C11", "I11")
-	f.SetCellValue(sheetName, "C11", calculation.MonthlyAverageIncome.IntPart())
+	f.SetCellValue(sheetName, "C11", calculation.MonthlyAverageIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "B11", "I11", numberStyle)
 
 	f.SetCellValue(sheetName, "B13", "ອັດຕາແລກປ່ຽນວັນທີ")
 	f.SetCellValue(sheetName, "C13", calculation.CreatedAt.Format("02/01/2006"))
 	f.MergeCell(sheetName, "D13", "I13")
-	f.SetCellValue(sheetName, "D13", calculation.ExchangeRate.IntPart())
+	f.SetCellValue(sheetName, "D13", calculation.ExchangeRate.InexactFloat64())
 	f.SetCellStyle(sheetName, "C13", "I13", numberStyle)
 
 	f.SetCellValue(sheetName, "B14", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
 	f.SetCellStyle(sheetName, "B14", "B14", fontStyle)
 
 	f.MergeCell(sheetName, "C14", "I14")
-	f.SetCellValue(sheetName, "C14", calculation.MonthlyNetIncome.IntPart())
+	f.SetCellValue(sheetName, "C14", calculation.MonthlyNetIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "C14", "I14", numberStyle)
 }
 
@@ -303,7 +303,7 @@ func setSalaryToExcel(f *excelize.File, numberStyle, fontStyle int, sheetName st
 	startRow := 5
 	for i, v := range calculation.SalaryBreakdown.MonthlySalaries {
 		f.SetCellValue(sheetName, fmt.Sprintf("L%d", startRow+i), v.Month)
-		f.SetCellValue(sheetName, fmt.Sprintf("M%d", startRow+i), v.Total.IntPart())
+		f.SetCellValue(sheetName, fmt.Sprintf("M%d", startRow+i), v.Total.InexactFloat64())
 		f.SetCellStyle(sheetName, fmt.Sprintf("M%d", startRow+i), fmt.Sprintf("M%d", startRow+i), numberStyle)
 
 		amounts := listNumberFromTransactions(v.Transactions)
@@ -318,7 +318,7 @@ func setSalaryToExcel(f *excelize.File, numberStyle, fontStyle int, sheetName st
 	f.SetCellValue(sheetName, rowTitle, "Total")
 	f.SetCellStyle(sheetName, rowTitle, rowTitle, fontStyle)
 
-	f.SetCellValue(sheetName, rowAmount, calculation.TotalIncome.IntPart())
+	f.SetCellValue(sheetName, rowAmount, calculation.TotalIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, rowAmount, rowAmount, numberStyle)
 
 	return nil
@@ -336,9 +336,9 @@ func setAllowanceToExcel(f *excelize.File, numberStyle, fontStyle int, sheetName
 
 	for i, v := range calculation.AllowanceBreakdown.Allowances {
 		f.SetCellValue(sheetName, fmt.Sprintf("L%d", startRow+i+1), v.Title)
-		f.SetCellValue(sheetName, fmt.Sprintf("M%d", startRow+i+1), v.Total.IntPart())
-		f.SetCellValue(sheetName, fmt.Sprintf("N%d", startRow+i+1), v.Months.IntPart())
-		f.SetCellValue(sheetName, fmt.Sprintf("O%d", startRow+i+1), v.MonthlyAverage.IntPart())
+		f.SetCellValue(sheetName, fmt.Sprintf("M%d", startRow+i+1), v.Total.InexactFloat64())
+		f.SetCellValue(sheetName, fmt.Sprintf("N%d", startRow+i+1), v.Months.InexactFloat64())
+		f.SetCellValue(sheetName, fmt.Sprintf("O%d", startRow+i+1), v.MonthlyAverage.InexactFloat64())
 		f.SetCellStyle(sheetName, fmt.Sprintf("M%d", startRow+i+1), fmt.Sprintf("O%d", startRow+i+1), numberStyle)
 	}
 
@@ -347,7 +347,7 @@ func setAllowanceToExcel(f *excelize.File, numberStyle, fontStyle int, sheetName
 	f.MergeCell(sheetName, fmt.Sprintf("L%d", endRow), fmt.Sprintf("N%d", endRow))
 	f.SetCellStyle(sheetName, fmt.Sprintf("L%d", endRow), fmt.Sprintf("N%d", endRow), fontStyle)
 
-	f.SetCellValue(sheetName, fmt.Sprintf("O%d", endRow), calculation.Source.Allowance.Total.IntPart())
+	f.SetCellValue(sheetName, fmt.Sprintf("O%d", endRow), calculation.Source.Allowance.Total.InexactFloat64())
 	f.SetCellStyle(sheetName, fmt.Sprintf("O%d", endRow), fmt.Sprintf("O%d", endRow), numberStyle)
 	return nil
 }
@@ -379,7 +379,7 @@ func setCommissionToExcel(f *excelize.File, numberStyle, fontStyle int, sheetNam
 	rowNumber := startRow + 2
 	for i, v := range calculation.CommissionBreakdown.Commissions {
 		f.SetCellValue(sheetName, fmt.Sprintf("L%d", rowNumber+i), v.Month)
-		f.SetCellValue(sheetName, fmt.Sprintf("M%d", rowNumber+i), v.Total.IntPart())
+		f.SetCellValue(sheetName, fmt.Sprintf("M%d", rowNumber+i), v.Total.InexactFloat64())
 		f.SetCellStyle(sheetName, fmt.Sprintf("M%d", rowNumber+i), fmt.Sprintf("M%d", rowNumber+i), numberStyle)
 
 		amounts := listNumberFromTransactions(v.Transactions)
@@ -394,7 +394,7 @@ func setCommissionToExcel(f *excelize.File, numberStyle, fontStyle int, sheetNam
 	f.SetCellValue(sheetName, rowTitle, "Average")
 	f.SetCellStyle(sheetName, rowTitle, rowTitle, fontStyle)
 
-	f.SetCellValue(sheetName, rowAmount, calculation.Source.Commission.MonthlyAverage.IntPart())
+	f.SetCellValue(sheetName, rowAmount, calculation.Source.Commission.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, rowAmount, rowAmount, numberStyle)
 
 	return nil
@@ -429,10 +429,10 @@ func listTitleForTimesReceived(l int) []string {
 	return headers
 }
 
-func listNumberFromTransactions(ts []Transaction) []int64 {
-	numbers := make([]int64, 0)
+func listNumberFromTransactions(ts []Transaction) []float64 {
+	numbers := make([]float64, 0)
 	for _, v := range ts {
-		numbers = append(numbers, v.Amount.IntPart())
+		numbers = append(numbers, v.Amount.InexactFloat64())
 	}
 	return numbers
 }
@@ -473,7 +473,7 @@ func setStringsAcrossExcelCols(f *excelize.File, sheet string, startCol string, 
 	return nil
 }
 
-func setNumbersAcrossExcelCols(f *excelize.File, sheet string, startCol string, row int, style int, values []int64) error {
+func setNumbersAcrossExcelCols(f *excelize.File, sheet string, startCol string, row int, style int, values []float64) error {
 	colIdx, err := excelize.ColumnNameToNumber(startCol)
 	if err != nil {
 		return err
@@ -498,17 +498,17 @@ func setCalculationsToExcel(f *excelize.File, sheetName string, numberStyle int,
 		f.SetCellValue(sheetName, fmt.Sprintf("A%d", rowNumber), c.Number)
 		f.SetCellValue(sheetName, fmt.Sprintf("B%d", rowNumber), c.Product)
 
-		f.SetCellValue(sheetName, fmt.Sprintf("C%d", rowNumber), c.MonthlyAverageIncome.IntPart())
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", rowNumber), c.MonthlyAverageIncome.InexactFloat64())
 		f.SetCellStyle(sheetName, fmt.Sprintf("C%d", rowNumber), fmt.Sprintf("C%d", rowNumber), numberStyle)
 
 		f.SetCellValue(sheetName, fmt.Sprintf("D%d", rowNumber), c.Account.Number)
 		f.SetCellValue(sheetName, fmt.Sprintf("E%d", rowNumber), c.Account.DisplayName)
-		f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowNumber), c.PeriodInMonth.IntPart())
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowNumber), c.PeriodInMonth.InexactFloat64())
 		f.SetCellStyle(sheetName, fmt.Sprintf("F%d", rowNumber), fmt.Sprintf("F%d", rowNumber), numberStyle)
 
 		f.SetCellValue(sheetName, fmt.Sprintf("G%d", rowNumber), c.Account.Currency)
 
-		f.SetCellValue(sheetName, fmt.Sprintf("H%d", rowNumber), c.MonthlyNetIncome.IntPart())
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", rowNumber), c.MonthlyNetIncome.InexactFloat64())
 		f.SetCellStyle(sheetName, fmt.Sprintf("H%d", rowNumber), fmt.Sprintf("H%d", rowNumber), numberStyle)
 	}
 }

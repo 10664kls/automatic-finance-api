@@ -322,7 +322,7 @@ func calculatePMT(interest decimal.Decimal, period decimal.Decimal, financeAmoun
 	}
 
 	onePlusRate := decimal.NewFromInt(1).Add(monthlyRate)
-	exponent := decimal.NewFromInt(-period.IntPart())
+	exponent := decimal.NewFromFloat(-period.InexactFloat64())
 	pow := onePlusRate.Pow(exponent)
 	denominator := decimal.NewFromInt(1).Sub(pow)
 
