@@ -190,28 +190,33 @@ func setSummaryToExcelForProductPLAndSF(f *excelize.File, numberStyle, fontStyle
 	f.SetCellValue(sheetName, "C12", calculation.EightyPercentOfMonthlyOtherIncome.InexactFloat64())
 	f.SetCellStyle(sheetName, "B12", "I12", numberStyle)
 
-	f.SetCellValue(sheetName, "B13", "ເງິນເດືອນພື້ນຖານ")
+	f.SetCellValue(sheetName, "B13", "ເງິນເດືອນພື້ນຖານ (Min)")
 	f.MergeCell(sheetName, "C13", "I13")
 	f.SetCellValue(sheetName, "C13", calculation.Source.BasicSalary.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B13", "I13", numberStyle)
 
-	f.SetCellValue(sheetName, "B14", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ")
+	f.SetCellValue(sheetName, "B14", "ເງິນເດືອນພື້ນຖານ (ຕາມສໍາພາດ)")
 	f.MergeCell(sheetName, "C14", "I14")
-	f.SetCellValue(sheetName, "C14", calculation.MonthlyAverageIncome.InexactFloat64())
+	f.SetCellValue(sheetName, "C14", calculation.BasicSalaryFromInterview.InexactFloat64())
 	f.SetCellStyle(sheetName, "B14", "I14", numberStyle)
 
-	f.SetCellValue(sheetName, "B16", "ອັດຕາແລກປ່ຽນວັນທີ")
-	f.SetCellValue(sheetName, "C16", calculation.CreatedAt.Format("02/01/2006"))
-	f.MergeCell(sheetName, "D16", "I16")
-	f.SetCellValue(sheetName, "D16", calculation.ExchangeRate.InexactFloat64())
-	f.SetCellStyle(sheetName, "C16", "I16", numberStyle)
+	f.SetCellValue(sheetName, "B15", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ")
+	f.MergeCell(sheetName, "C15", "I15")
+	f.SetCellValue(sheetName, "C15", calculation.MonthlyAverageIncome.InexactFloat64())
+	f.SetCellStyle(sheetName, "B15", "I15", numberStyle)
 
-	f.SetCellValue(sheetName, "B17", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
-	f.SetCellStyle(sheetName, "B17", "B17", fontStyle)
-
-	f.MergeCell(sheetName, "C17", "I17")
-	f.SetCellValue(sheetName, "C17", calculation.MonthlyNetIncome.InexactFloat64())
+	f.SetCellValue(sheetName, "B17", "ອັດຕາແລກປ່ຽນວັນທີ")
+	f.SetCellValue(sheetName, "C17", calculation.CreatedAt.Format("02/01/2006"))
+	f.MergeCell(sheetName, "D17", "I17")
+	f.SetCellValue(sheetName, "D17", calculation.ExchangeRate.InexactFloat64())
 	f.SetCellStyle(sheetName, "C17", "I17", numberStyle)
+
+	f.SetCellValue(sheetName, "B18", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
+	f.SetCellStyle(sheetName, "B18", "B18", fontStyle)
+
+	f.MergeCell(sheetName, "C18", "I18")
+	f.SetCellValue(sheetName, "C18", calculation.MonthlyNetIncome.InexactFloat64())
+	f.SetCellStyle(sheetName, "C18", "I18", numberStyle)
 
 }
 
@@ -250,33 +255,38 @@ func setSummaryToExcelForProductSA(f *excelize.File, numberStyle, fontStyle int,
 	f.SetCellValue(sheetName, "C8", calculation.Source.BasicSalary.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B8", "I8", numberStyle)
 
-	f.SetCellValue(sheetName, "B9", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: COM/OT")
+	f.SetCellValue(sheetName, "B9", "ເງິນເດືອນພື້ນຖານ (ຕາມສໍາພາດ)")
 	f.MergeCell(sheetName, "C9", "I9")
-	f.SetCellValue(sheetName, "C9", calculation.Source.Commission.MonthlyAverage.InexactFloat64())
+	f.SetCellValue(sheetName, "C9", calculation.BasicSalaryFromInterview.InexactFloat64())
 	f.SetCellStyle(sheetName, "B9", "I9", numberStyle)
 
-	f.SetCellValue(sheetName, "B10", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: Allowance")
+	f.SetCellValue(sheetName, "B10", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: COM/OT")
 	f.MergeCell(sheetName, "C10", "I10")
-	f.SetCellValue(sheetName, "C10", calculation.Source.Allowance.MonthlyAverage.InexactFloat64())
+	f.SetCellValue(sheetName, "C10", calculation.Source.Commission.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B10", "I10", numberStyle)
 
-	f.SetCellValue(sheetName, "B11", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ")
+	f.SetCellValue(sheetName, "B11", "ສະເລ່ຍລາຍໄດ້ອື່ນຈາກ: Allowance")
 	f.MergeCell(sheetName, "C11", "I11")
-	f.SetCellValue(sheetName, "C11", calculation.MonthlyAverageIncome.InexactFloat64())
+	f.SetCellValue(sheetName, "C11", calculation.Source.Allowance.MonthlyAverage.InexactFloat64())
 	f.SetCellStyle(sheetName, "B11", "I11", numberStyle)
 
-	f.SetCellValue(sheetName, "B13", "ອັດຕາແລກປ່ຽນວັນທີ")
-	f.SetCellValue(sheetName, "C13", calculation.CreatedAt.Format("02/01/2006"))
-	f.MergeCell(sheetName, "D13", "I13")
-	f.SetCellValue(sheetName, "D13", calculation.ExchangeRate.InexactFloat64())
-	f.SetCellStyle(sheetName, "C13", "I13", numberStyle)
+	f.SetCellValue(sheetName, "B12", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ")
+	f.MergeCell(sheetName, "C12", "I12")
+	f.SetCellValue(sheetName, "C12", calculation.MonthlyAverageIncome.InexactFloat64())
+	f.SetCellStyle(sheetName, "B12", "I12", numberStyle)
 
-	f.SetCellValue(sheetName, "B14", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
-	f.SetCellStyle(sheetName, "B14", "B14", fontStyle)
-
-	f.MergeCell(sheetName, "C14", "I14")
-	f.SetCellValue(sheetName, "C14", calculation.MonthlyNetIncome.InexactFloat64())
+	f.SetCellValue(sheetName, "B14", "ອັດຕາແລກປ່ຽນວັນທີ")
+	f.SetCellValue(sheetName, "C14", calculation.CreatedAt.Format("02/01/2006"))
+	f.MergeCell(sheetName, "D14", "I14")
+	f.SetCellValue(sheetName, "D14", calculation.ExchangeRate.InexactFloat64())
 	f.SetCellStyle(sheetName, "C14", "I14", numberStyle)
+
+	f.SetCellValue(sheetName, "B15", "ຍອດສະເລ່ຍລາຍໄດ້/ເດືອນ (LAK)")
+	f.SetCellStyle(sheetName, "B15", "B15", fontStyle)
+
+	f.MergeCell(sheetName, "C15", "I15")
+	f.SetCellValue(sheetName, "C15", calculation.MonthlyNetIncome.InexactFloat64())
+	f.SetCellStyle(sheetName, "C15", "I15", numberStyle)
 }
 
 func setSalaryToExcel(f *excelize.File, numberStyle, fontStyle int, sheetName string, calculation *Calculation) error {
