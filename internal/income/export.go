@@ -137,7 +137,7 @@ func exportCalculationToExcel(ctx context.Context, calculation *Calculation) (*b
 
 func setSummaryToExcelForProductPLAndSF(f *excelize.File, numberStyle, fontStyle int, sheetName string, calculation *Calculation) {
 	f.MergeCell(sheetName, "B2", "I2")
-	f.SetCellValue(sheetName, "B2", "ໃບວິເຄາະສິນເຊື່ອ (ການປະເມີນລາຍໄດ້ຂອງລູກຄ້າ)")
+	f.SetCellValue(sheetName, "B2", "ໃບວິເຄາະສິນເຊື່ອ (ການປະເມີນລາຍໄດ້ຂອງລູກຄ້າ) - ລາຍໄດ້ເງິນເດືອນພະນັກງານ")
 	f.SetCellStyle(sheetName, "B2", "I2", fontStyle)
 
 	f.SetCellValue(sheetName, "B3", "Product")
@@ -222,7 +222,7 @@ func setSummaryToExcelForProductPLAndSF(f *excelize.File, numberStyle, fontStyle
 
 func setSummaryToExcelForProductSA(f *excelize.File, numberStyle, fontStyle int, sheetName string, calculation *Calculation) {
 	f.MergeCell(sheetName, "B2", "I2")
-	f.SetCellValue(sheetName, "B2", "ໃບວິເຄາະສິນເຊື່ອ (ການປະເມີນລາຍໄດ້ຂອງລູກຄ້າ)")
+	f.SetCellValue(sheetName, "B2", "ໃບວິເຄາະສິນເຊື່ອ (ການປະເມີນລາຍໄດ້ຂອງລູກຄ້າ) - ລາຍໄດ້ເງິນເດືອນພະນັກງານ")
 	f.SetCellStyle(sheetName, "B2", "I2", fontStyle)
 
 	f.SetCellValue(sheetName, "B3", "Product")
