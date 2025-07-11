@@ -486,7 +486,20 @@ func (s *Service) GetIncomeTransactionByBillNumber(ctx context.Context, in *GetT
 }
 
 func (s *Service) ExportCalculationsToExcel(ctx context.Context, in *BatchGetCalculationsQuery) (*bytes.Buffer, error) {
-	return s.exportCalculationsToExcel(ctx, in)
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Method", "ExportCalculationsToExcel"),
+		zap.String("Username", claims.Username),
+		zap.Any("req", in),
+	)
+
+	byt, err := s.exportCalculationsToExcel(ctx, in)
+	if err != nil {
+		zlog.Error("failed to export calculations to excel", zap.Error(err))
+		return nil, err
+	}
+
+	return byt, nil
 }
 
 func (s *Service) ExportCalculationToExcelByNumber(ctx context.Context, number string) (*bytes.Buffer, error) {

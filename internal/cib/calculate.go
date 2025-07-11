@@ -482,7 +482,7 @@ func saveCalculation(ctx context.Context, db *sql.DB, in *Calculation) error {
 type CalculationQuery struct {
 	ID                  int64     `query:"id"`
 	Number              string    `query:"number"`
-	CustomerDisplayName string    `query:"customerDisplayName"`
+	CustomerDisplayName string    `query:"customer"`
 	CreatedAfter        time.Time `query:"createdAfter"`
 	CreatedBefore       time.Time `query:"createdBefore"`
 	PageSize            uint64    `query:"pageSize"`

@@ -1,6 +1,7 @@
 package cib
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/10664kls/automatic-finance-api/internal/auth"
@@ -25,6 +27,7 @@ import (
 type Service struct {
 	pdfExtractorURL string
 	db              *sql.DB
+	mu              *sync.Mutex
 	currency        *currency.Service
 	zlog            *zap.Logger
 }
@@ -47,6 +50,7 @@ func NewService(_ context.Context, db *sql.DB, currency *currency.Service, zlog 
 		db:              db,
 		currency:        currency,
 		pdfExtractorURL: pdfExtractorURL,
+		mu:              new(sync.Mutex),
 		zlog:            zlog,
 	}, nil
 }
@@ -152,16 +156,16 @@ func (s *Service) CalculateCIB(ctx context.Context, in *CalculateReq) (*Calculat
 		return nil, err
 	}
 
-	// exists, err := isCalculationExists(ctx, s.db, in.Number)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to check if calculation exists: %w", err)
-	// }
-	// if exists {
-	// 	return nil, rpcStatus.New(
-	// 		codes.AlreadyExists,
-	// 		"Calculation with this number already exists. Please use a different number.",
-	// 	).Err()
-	// }
+	exists, err := isCalculationExists(ctx, s.db, in.Number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if calculation exists: %w", err)
+	}
+	if exists {
+		return nil, rpcStatus.New(
+			codes.AlreadyExists,
+			"Calculation with this number already exists. Please use a different number.",
+		).Err()
+	}
 
 	cibFile, err := getCIBFileByName(ctx, s.db, in.CIBFileName)
 	if errors.Is(err, ErrCIBFileNotFound) {
@@ -266,4 +270,49 @@ func (s *Service) ListCalculations(ctx context.Context, in *CalculationQuery) (*
 
 func (s *Service) SignedURL(ctx context.Context, in *CIBFile) string {
 	return fmt.Sprintf("%s/v1/files/%s?signature=%s", os.Getenv("BACKEND_URL"), in.Name, signedURL(in))
+}
+
+func (s *Service) ExportCalculationsToExcel(ctx context.Context, in *BatchGetCalculationsQuery) (*bytes.Buffer, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Method", "ExportCalculationsToExcel"),
+		zap.String("Username", claims.Username),
+		zap.Any("req", in),
+	)
+
+	byt, err := s.exportCalculationsToExcel(ctx, in)
+	if err != nil {
+		zlog.Error("failed to export calculations to excel", zap.Error(err))
+		return nil, err
+	}
+
+	return byt, nil
+}
+
+func (s *Service) ExportCalculationToExcelByNumber(ctx context.Context, number string) (*bytes.Buffer, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Method", "ExportCalculationToExcelByNumber"),
+		zap.String("Username", claims.Username),
+		zap.String("Number", number),
+	)
+
+	calculation, err := getCalculation(ctx, s.db, &CalculationQuery{
+		Number: number,
+	})
+	if errors.Is(err, ErrCalculationNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this resource or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get calculation by number", zap.Error(err))
+		return nil, err
+	}
+
+	buf, err := s.exportCalculationToExcel(ctx, calculation)
+	if err != nil {
+		zlog.Error("failed to export calculation to excel", zap.Error(err))
+		return nil, err
+	}
+
+	return buf, nil
 }

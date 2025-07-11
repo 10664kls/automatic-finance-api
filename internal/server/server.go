@@ -83,8 +83,8 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.POST("/incomes/calculations/:number/complete", s.completeIncomeCalculation, mws...)
 	v1.POST("/incomes/calculations/:number/transactions", s.listIncomeTransactionsByNumber, mws...)
 	v1.GET("/incomes/calculations/:number/transactions/:billNumber", s.getIncomeTransactionByBillNumber, mws...)
-	v1.GET("/incomes/calculations/:number/export-to-excel", s.exportCalculationToExcelByNumber, mws...)
-	v1.GET("/incomes/calculations/export-to-excel", s.exportCalculationsToExcel, mws...)
+	v1.GET("/incomes/calculations/:number/export-to-excel", s.exportIncomeCalculationToExcelByNumber, mws...)
+	v1.GET("/incomes/calculations/export-to-excel", s.exportIncomeCalculationsToExcel, mws...)
 
 	v1.GET("/incomes/wordlists", s.listIncomeWordlists, mws...)
 	v1.GET("/incomes/wordlists/:id", s.getIncomeWordlistByID, mws...)
@@ -94,6 +94,8 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.GET("/cib/calculations", s.listCIBCalculations, mws...)
 	v1.GET("/cib/calculations/:number", s.getCIBCalculationByNumber, mws...)
 	v1.POST("/cib/calculations", s.calculateCIB, mws...)
+	v1.GET("/cib/calculations/:number/export-to-excel", s.exportCIBCalculationToExcelByNumber, mws...)
+	v1.GET("/cib/calculations/export-to-excel", s.exportCIBCalculationsToExcel, mws...)
 
 	return nil
 }
@@ -545,7 +547,7 @@ func (s *Server) completeIncomeCalculation(c echo.Context) error {
 	})
 }
 
-func (s *Server) exportCalculationToExcelByNumber(c echo.Context) error {
+func (s *Server) exportIncomeCalculationToExcelByNumber(c echo.Context) error {
 	buf, err := s.income.ExportCalculationToExcelByNumber(c.Request().Context(), c.Param("number"))
 	if err != nil {
 		return err
@@ -557,7 +559,7 @@ func (s *Server) exportCalculationToExcelByNumber(c echo.Context) error {
 	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
 }
 
-func (s *Server) exportCalculationsToExcel(c echo.Context) error {
+func (s *Server) exportIncomeCalculationsToExcel(c echo.Context) error {
 	req := new(income.BatchGetCalculationsQuery)
 	if err := c.Bind(req); err != nil {
 		return badJSON()
@@ -662,4 +664,33 @@ func (s *Server) downloadCIB(c echo.Context) error {
 		return err
 	}
 	return c.Inline(f.Location, f.Name)
+}
+
+func (s *Server) exportCIBCalculationToExcelByNumber(c echo.Context) error {
+	buf, err := s.cib.ExportCalculationToExcelByNumber(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="CIB_calculation_%s.xlsx"`, c.Param("number")))
+
+	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
+}
+
+func (s *Server) exportCIBCalculationsToExcel(c echo.Context) error {
+	req := new(cib.BatchGetCalculationsQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	buf, err := s.cib.ExportCalculationsToExcel(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="CIB_calculations.xlsx"`)
+
+	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
 }
