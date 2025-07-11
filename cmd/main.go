@@ -16,7 +16,6 @@ import (
 	"github.com/10664kls/automatic-finance-api/internal/auth"
 	"github.com/10664kls/automatic-finance-api/internal/cib"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
-	"github.com/10664kls/automatic-finance-api/internal/gemini"
 	"github.com/10664kls/automatic-finance-api/internal/income"
 	"github.com/10664kls/automatic-finance-api/internal/middleware"
 	"github.com/10664kls/automatic-finance-api/internal/server"
@@ -25,7 +24,6 @@ import (
 	stdmw "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"google.golang.org/genai"
 	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -98,21 +96,7 @@ func run() error {
 	}
 	zlog.Info("Income service initialized")
 
-	genaiClient, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  os.Getenv("GENAI_API_KEY"),
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create genai client: %w", err)
-	}
-
-	geminiService, err := gemini.NewService(ctx, db, os.Getenv("GENAI_MODEL"), genaiClient, zlog)
-	if err != nil {
-		return fmt.Errorf("failed to create gemini service: %w", err)
-	}
-	zlog.Info("Gemini service initialized")
-
-	cibService, err := cib.NewService(ctx, db, currencySvc, geminiService, zlog)
+	cibService, err := cib.NewService(ctx, db, currencySvc, zlog, os.Getenv("PDF_EXTRACTOR_URL"))
 	if err != nil {
 		return fmt.Errorf("failed to create cib service: %w", err)
 	}

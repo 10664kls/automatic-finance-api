@@ -11,7 +11,6 @@ import (
 
 	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/database"
-	"github.com/10664kls/automatic-finance-api/internal/gemini"
 	"github.com/10664kls/automatic-finance-api/internal/pager"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/shopspring/decimal"
@@ -128,7 +127,7 @@ func (r *CalculateReq) Validate() error {
 	return nil
 }
 
-func newCalculationFromCIBInfo(by string, number string, fileName string, cib *gemini.CIBInfo, currencies []*currency.Currency) *Calculation {
+func newCalculationFromCIBInfo(by string, number string, fileName string, extraction *CreditBureau, currencies []*currency.Currency) *Calculation {
 	now := time.Now()
 	c := new(Calculation)
 	c.CreatedBy = by
@@ -137,13 +136,13 @@ func newCalculationFromCIBInfo(by string, number string, fileName string, cib *g
 	c.UpdatedAt = now
 	c.Number = number
 	c.CIBFileName = fileName
-	c.Customer.DisplayName = cib.Account.DisplayName
-	c.Customer.PhoneNumber = cib.Account.PhoneNumber
-	c.Contracts = newContracts(cib.Contracts, currenciesToMap(currencies))
+	c.Customer.DisplayName = extraction.DisplayName
+	c.Customer.PhoneNumber = extraction.MobileNumber
+	c.Contracts = newContracts(extraction.Contracts, currenciesToMap(currencies))
 	c.AggregateQuantity = newAggregateQuantity(c.Contracts)
-	c.AggregateByBankCode = newAggregateByBankCodes(cib.AggregateByBankCodes)
+	c.AggregateByBankCode = extraction.AggregateByBankCode
 	c.TotalInstallmentInLAK = sumInstallment(c.Contracts)
-	if d, err := ParseDDMMYYYY("02/01/2006", cib.Account.DateOfBirth); err == nil {
+	if d, err := ParseDDMMYYYY("02-01-2006", extraction.DOB); err == nil {
 		c.Customer.DateOfBirth = d
 	}
 
@@ -179,52 +178,39 @@ func newAggregateQuantity(contracts []Contract) AggregateQuantity {
 	return a
 }
 
-func newAggregateByBankCodes(args []gemini.AggregateByBankCode) []AggregateByBankCode {
-	bs := make([]AggregateByBankCode, 0)
-
-	for _, b := range args {
-		bs = append(bs, AggregateByBankCode{
-			BankCode: b.BankCode,
-			Quantity: decimal.NewFromInt(b.Quantity),
-		})
-	}
-
-	return bs
-}
-
-func newContract(contract gemini.Contract, exchangeRate decimal.Decimal) Contract {
+func newContract(contract loanHistory, exchangeRate decimal.Decimal) Contract {
 	var c Contract
-	startedAt, err := ParseDDMMYYYY("02-01-2006", contract.FirstInstallmentDate)
+	startedAt, err := ParseDDMMYYYY("02-01-2006", contract.OpenedDate)
 	if err == nil {
 		c.FirstInstallment = startedAt
 	}
 
-	endedAt, err := ParseDDMMYYYY("02-01-2006", contract.LastInstallmentDate)
+	endedAt, err := ParseDDMMYYYY("02-01-2006", contract.MatureDate)
 	if err == nil {
 		c.LastInstallment = endedAt
 	}
 
-	lastedAt, err := ParseDDMMYYYY("02-01-2006", contract.LastedAt)
+	lastedAt, err := ParseDDMMYYYY("02-01-2006", contract.RecentDate)
 	if err == nil {
 		c.LastedAt = lastedAt
 	}
 
-	c.Number = contract.LoanNumber
-	c.TermType = contract.TermType
-	c.termType = termTypeFromTypeOfTermLoan(contract.TermType)
-	c.Status = statusFromContractStatus(contract.Status)
+	c.Number = contract.AccountNumber
+	c.TermType = contract.TypeOfLoan
+	c.termType = termTypeFromTypeOfTermLoan(contract.TypeOfLoan)
+	c.Status = statusFromContractStatus(contract.AccountStatusEng)
 	c.Period = countMonth(startedAt.Time(), endedAt.Time())
-	c.BankCode = contract.BankCode
+	c.BankCode = contract.BankNameEn
 	c.Currency = contract.Currency
-	c.GradeCIB = contract.GradeCIB
+	c.GradeCIB = contract.DelinquencyCode
 	c.ExchangeRate = exchangeRate
-	c.OverdueInDay = contract.OverdueDay
+	c.OverdueInDay = parseDecimal(contract.NoOfOverdueDays)
 	c.GradeCIBLast12Months = contract.GradeCIBLast12Months
-	c.InterestRate = contract.InterestRate
-	c.Term = contract.Term
-	c.Type = contract.Type
-	c.OutstandingBalance = contract.OutstandingBalance
-	c.FinanceAmount = contract.FinanceAmount
+	c.InterestRate = parseDecimal(contract.Interest)
+	c.Term = contract.Tenor
+	c.Type = contract.TypeOfProduct
+	c.OutstandingBalance = parseDecimal(contract.OsBalance)
+	c.FinanceAmount = parseDecimal(contract.CreditLimit)
 
 	installment := calculateInstallment(c)
 	c.Installment = installment
@@ -233,7 +219,16 @@ func newContract(contract gemini.Contract, exchangeRate decimal.Decimal) Contrac
 	return c
 }
 
-func newContracts(contracts []gemini.Contract, currencies map[string]decimal.Decimal) []Contract {
+func parseDecimal(s string) decimal.Decimal {
+	s = strings.ReplaceAll(s, ",", "")
+	d, err := decimal.NewFromString(s)
+	if err != nil {
+		return decimal.Zero
+	}
+	return d
+}
+
+func newContracts(contracts []loanHistory, currencies map[string]decimal.Decimal) []Contract {
 	cs := make([]Contract, len(contracts))
 
 	for i, c := range contracts {

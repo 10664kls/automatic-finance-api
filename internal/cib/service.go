@@ -13,7 +13,6 @@ import (
 
 	"github.com/10664kls/automatic-finance-api/internal/auth"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
-	"github.com/10664kls/automatic-finance-api/internal/gemini"
 	"github.com/10664kls/automatic-finance-api/internal/pager"
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/google/uuid"
@@ -24,13 +23,13 @@ import (
 )
 
 type Service struct {
-	db       *sql.DB
-	currency *currency.Service
-	gemini   *gemini.Service
-	zlog     *zap.Logger
+	pdfExtractorURL string
+	db              *sql.DB
+	currency        *currency.Service
+	zlog            *zap.Logger
 }
 
-func NewService(_ context.Context, db *sql.DB, currency *currency.Service, gemini *gemini.Service, zlog *zap.Logger) (*Service, error) {
+func NewService(_ context.Context, db *sql.DB, currency *currency.Service, zlog *zap.Logger, pdfExtractorURL string) (*Service, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
@@ -40,15 +39,15 @@ func NewService(_ context.Context, db *sql.DB, currency *currency.Service, gemin
 	if currency == nil {
 		return nil, errors.New("currency service is nil")
 	}
-	if gemini == nil {
-		return nil, errors.New("gemini service is nil")
+	if pdfExtractorURL == "" {
+		return nil, errors.New("pdf extractor url is empty")
 	}
 
 	return &Service{
-		db:       db,
-		currency: currency,
-		gemini:   gemini,
-		zlog:     zlog,
+		db:              db,
+		currency:        currency,
+		pdfExtractorURL: pdfExtractorURL,
+		zlog:            zlog,
 	}, nil
 }
 
@@ -153,16 +152,16 @@ func (s *Service) CalculateCIB(ctx context.Context, in *CalculateReq) (*Calculat
 		return nil, err
 	}
 
-	exists, err := isCalculationExists(ctx, s.db, in.Number)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check if calculation exists: %w", err)
-	}
-	if exists {
-		return nil, rpcStatus.New(
-			codes.AlreadyExists,
-			"Calculation with this number already exists. Please use a different number.",
-		).Err()
-	}
+	// exists, err := isCalculationExists(ctx, s.db, in.Number)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to check if calculation exists: %w", err)
+	// }
+	// if exists {
+	// 	return nil, rpcStatus.New(
+	// 		codes.AlreadyExists,
+	// 		"Calculation with this number already exists. Please use a different number.",
+	// 	).Err()
+	// }
 
 	cibFile, err := getCIBFileByName(ctx, s.db, in.CIBFileName)
 	if errors.Is(err, ErrCIBFileNotFound) {
@@ -185,8 +184,9 @@ func (s *Service) CalculateCIB(ctx context.Context, in *CalculateReq) (*Calculat
 		return nil, err
 	}
 
-	cibInfo, err := s.gemini.ExtractCIBLoanContractFromPDF(ctx, cibFile.Location)
+	extraction, err := s.extractPDF(ctx, cibFile)
 	if err != nil {
+		zlog.Error("failed to extract pdf", zap.Error(err))
 		return nil, err
 	}
 
@@ -197,7 +197,7 @@ func (s *Service) CalculateCIB(ctx context.Context, in *CalculateReq) (*Calculat
 		return nil, err
 	}
 
-	calculation := newCalculationFromCIBInfo(claims.Username, in.Number, cibFile.Name, cibInfo, currencies.Currencies)
+	calculation := newCalculationFromCIBInfo(claims.Username, in.Number, cibFile.Name, extraction, currencies.Currencies)
 	if err := saveCalculation(ctx, s.db, calculation); err != nil {
 		zlog.Error("failed to create calculation", zap.Error(err))
 		return nil, err
