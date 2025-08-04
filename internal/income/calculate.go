@@ -153,6 +153,14 @@ type SalaryBreakdown struct {
 	Total           decimal.Decimal `json:"total"`
 }
 
+func (s SalaryBreakdown) Length() decimal.Decimal {
+	if s.MonthlySalaries == nil {
+		return decimal.Zero
+	}
+
+	return decimal.NewFromInt(int64(len(s.MonthlySalaries)))
+}
+
 func (l *SalaryBreakdown) Bytes() []byte {
 	if l.MonthlySalaries == nil {
 		l.MonthlySalaries = []MonthlySalary{}

@@ -725,7 +725,7 @@ func newSourceIncome(m statMap, product product, period decimal.Decimal) *Source
 	return &Source{
 		Allowance: Breakdown{
 			Total:          m.toListAllowances().Total,
-			MonthlyAverage: m.averageAllowance(period),
+			MonthlyAverage: m.averageAllowance(),
 		},
 		Commission: Breakdown{
 			Total:          m.toListCommissions(period).Total,
@@ -799,7 +799,7 @@ func (s statMap) totalBasicSalary(product product, period decimal.Decimal) decim
 		return total.Div(period)
 
 	case ProductPL, ProductSF:
-		return s.basicSalary(product, period).Mul(period)
+		return s.basicSalary(product, period).Mul(s.toListMonthlySalaries().Length())
 	}
 
 	return decimal.Zero
@@ -850,7 +850,7 @@ func (s statMap) averageCommission(period decimal.Decimal) decimal.Decimal {
 	return s.toListCommissions(period).MonthlyAverage
 }
 
-func (s statMap) averageAllowance(period decimal.Decimal) decimal.Decimal {
+func (s statMap) averageAllowance() decimal.Decimal {
 	return s.toListAllowances().Total
 }
 
@@ -858,7 +858,7 @@ func (s statMap) averageOtherIncomeIn80Percent(period decimal.Decimal) decimal.D
 	// Assuming 80% of the total other income is considered
 	other := s.averageOtherIncome(period)
 	other = other.Add(s.averageCommission(period))
-	other = other.Add(s.averageAllowance(period))
+	other = other.Add(s.averageAllowance())
 	return other.Mul(decimal.NewFromFloat(0.8))
 }
 
@@ -869,12 +869,12 @@ func (s statMap) averageMonthlyIncome(product product, period decimal.Decimal) d
 		interview := s.basicSalaryFromInterview()
 		if interview.GreaterThan(decimal.Zero) && interview.LessThan(basic) {
 			return interview.
-				Add(s.averageAllowance(period)).
+				Add(s.averageAllowance()).
 				Add(s.averageCommission(period))
 		}
 
 		return basic.
-			Add(s.averageAllowance(period)).
+			Add(s.averageAllowance()).
 			Add(s.averageCommission(period))
 
 	case ProductPL, ProductSF:
