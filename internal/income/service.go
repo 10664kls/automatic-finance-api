@@ -15,6 +15,7 @@ import (
 	"github.com/10664kls/automatic-finance-api/internal/auth"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/pager"
+	"github.com/10664kls/automatic-finance-api/internal/statement"
 	"github.com/shopspring/decimal"
 	"github.com/xuri/excelize/v2"
 	"go.uber.org/zap"
@@ -24,13 +25,14 @@ import (
 )
 
 type Service struct {
-	currency *currency.Service
-	db       *sql.DB
-	mu       *sync.Mutex
-	zlog     *zap.Logger
+	currency  *currency.Service
+	statement *statement.Service
+	db        *sql.DB
+	mu        *sync.Mutex
+	zlog      *zap.Logger
 }
 
-func NewService(_ context.Context, db *sql.DB, currency *currency.Service, zlog *zap.Logger) (*Service, error) {
+func NewService(_ context.Context, db *sql.DB, currency *currency.Service, statement *statement.Service, zlog *zap.Logger) (*Service, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
@@ -40,12 +42,16 @@ func NewService(_ context.Context, db *sql.DB, currency *currency.Service, zlog 
 	if currency == nil {
 		return nil, errors.New("currency service is nil")
 	}
+	if statement == nil {
+		return nil, errors.New("statement service is nil")
+	}
 
 	return &Service{
-		db:       db,
-		currency: currency,
-		zlog:     zlog,
-		mu:       new(sync.Mutex),
+		db:        db,
+		currency:  currency,
+		statement: statement,
+		zlog:      zlog,
+		mu:        new(sync.Mutex),
 	}, nil
 }
 
@@ -179,8 +185,8 @@ func (s *Service) CalculateIncome(ctx context.Context, in *CalculateReq) (*Calcu
 		).Err()
 	}
 
-	statementFile, err := getStatementFileByName(ctx, s.db, in.StatementFileName)
-	if errors.Is(err, ErrStatementFileNotFound) {
+	statementFile, err := s.statement.GetStatementByName(ctx, in.StatementFileName)
+	if st, ok := rpcStatus.FromError(err); ok && st.Code() == codes.PermissionDenied {
 		s, _ := rpcStatus.New(
 			codes.InvalidArgument,
 			"Calculation is not valid or incomplete. Please check the errors and try again, see details for more information.",
@@ -196,7 +202,6 @@ func (s *Service) CalculateIncome(ctx context.Context, in *CalculateReq) (*Calcu
 		return nil, s.Err()
 	}
 	if err != nil {
-		zlog.Error("failed to get statement file", zap.Error(err))
 		return nil, err
 	}
 
@@ -379,12 +384,8 @@ func (s *Service) ListIncomeTransactionsByNumber(ctx context.Context, in *Transa
 		return nil, err
 	}
 
-	statementFile, err := getStatementFileByName(ctx, s.db, calculation.StatementFileName)
-	if errors.Is(err, ErrStatementFileNotFound) {
-		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this statement file or (it may not exist)")
-	}
+	statementFile, err := s.statement.GetStatementByName(ctx, calculation.StatementFileName)
 	if err != nil {
-		zlog.Error("failed to get statement file", zap.Error(err))
 		return nil, err
 	}
 
@@ -430,12 +431,8 @@ func (s *Service) GetIncomeTransactionByBillNumber(ctx context.Context, in *GetT
 		return nil, err
 	}
 
-	statementFile, err := getStatementFileByName(ctx, s.db, calculation.StatementFileName)
-	if errors.Is(err, ErrStatementFileNotFound) {
-		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to this statement file or (it may not exist)")
-	}
+	statementFile, err := s.statement.GetStatementByName(ctx, calculation.StatementFileName)
 	if err != nil {
-		zlog.Error("failed to get statement file", zap.Error(err))
 		return nil, err
 	}
 
@@ -530,7 +527,7 @@ func (s *Service) ExportCalculationToExcelByNumber(ctx context.Context, number s
 	return buf, nil
 }
 
-func (s *Service) listTransactionFromStatementFile(ctx context.Context, txReq *TransactionReq, wordlists []*Wordlist, statement *StatementFile) ([]*Transaction, error) {
+func (s *Service) listTransactionFromStatementFile(_ context.Context, txReq *TransactionReq, wordlists []*Wordlist, statement *statement.StatementFile) ([]*Transaction, error) {
 	f, err := excelize.OpenFile(statement.Location)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s: %w", statement.Name, err)
@@ -580,7 +577,7 @@ func (s *Service) listTransactionFromStatementFile(ctx context.Context, txReq *T
 	return txs, nil
 }
 
-func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *CalculateReq, wordlists []*Wordlist, statement *StatementFile) (*Calculation, error) {
+func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *CalculateReq, wordlists []*Wordlist, statement *statement.StatementFile) (*Calculation, error) {
 	claims := auth.ClaimsFromContext(ctx)
 	calculation := newCalculation(claims.Username, cal.Number, statement.Name, cal.Product)
 

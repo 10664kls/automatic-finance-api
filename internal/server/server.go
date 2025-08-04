@@ -9,6 +9,7 @@ import (
 	"github.com/10664kls/automatic-finance-api/internal/cib"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/income"
+	"github.com/10664kls/automatic-finance-api/internal/statement"
 	"github.com/labstack/echo/v4"
 	edPb "google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -17,13 +18,14 @@ import (
 )
 
 type Server struct {
-	auth     *auth.Auth
-	currency *currency.Service
-	income   *income.Service
-	cib      *cib.Service
+	auth      *auth.Auth
+	currency  *currency.Service
+	statement *statement.Service
+	income    *income.Service
+	cib       *cib.Service
 }
 
-func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Service, cib *cib.Service) (*Server, error) {
+func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Service, statement *statement.Service, cib *cib.Service) (*Server, error) {
 	if auth == nil {
 		return nil, errors.New("auth service is nil")
 	}
@@ -36,12 +38,16 @@ func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Servi
 	if cib == nil {
 		return nil, errors.New("cib service is nil")
 	}
+	if statement == nil {
+		return nil, errors.New("statement service is nil")
+	}
 
 	return &Server{
-		auth:     auth,
-		currency: currency,
-		income:   income,
-		cib:      cib,
+		auth:      auth,
+		currency:  currency,
+		income:    income,
+		statement: statement,
+		cib:       cib,
 	}, nil
 }
 
@@ -365,7 +371,7 @@ func (s *Server) uploadStatement(c echo.Context) error {
 	defer src.Close()
 
 	ctx := c.Request().Context()
-	sf, err := s.income.UploadStatement(ctx, &income.StatementFileReq{
+	sf, err := s.statement.UploadStatement(ctx, &statement.StatementFileReq{
 		ReadSeeker:   src,
 		OriginalName: f.Filename,
 	})
@@ -373,7 +379,7 @@ func (s *Server) uploadStatement(c echo.Context) error {
 		return err
 	}
 
-	sf.PublicURL = s.income.SignedURL(ctx, sf)
+	sf.PublicURL = s.statement.SignedURL(ctx, sf)
 
 	return c.JSON(http.StatusOK, echo.Map{
 		"metadata": sf,
@@ -382,7 +388,7 @@ func (s *Server) uploadStatement(c echo.Context) error {
 
 func (s *Server) downloadStatement(c echo.Context) error {
 	name, signature := c.Param("name"), c.QueryParam("signature")
-	f, err := s.income.GetStatement(c.Request().Context(), name, signature)
+	f, err := s.statement.GetStatement(c.Request().Context(), name, signature)
 	if err != nil {
 		return err
 	}

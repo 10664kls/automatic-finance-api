@@ -1,4 +1,4 @@
-package income
+package statement
 
 import (
 	"context"
@@ -21,6 +21,25 @@ import (
 	"google.golang.org/grpc/codes"
 	rpcStatus "google.golang.org/grpc/status"
 )
+
+type Service struct {
+	db   *sql.DB
+	zlog *zap.Logger
+}
+
+func NewService(_ context.Context, db *sql.DB, zlog *zap.Logger) (*Service, error) {
+	if db == nil {
+		return nil, errors.New("database connection is nil")
+	}
+	if zlog == nil {
+		return nil, errors.New("logger is nil")
+	}
+
+	return &Service{
+		db:   db,
+		zlog: zlog,
+	}, nil
+}
 
 // ErrUnsupportedFileType is returned when the file type is not supported.
 var ErrUnsupportedFileType = errors.New("unsupported file type")
@@ -126,6 +145,25 @@ func (s *Service) GetStatement(ctx context.Context, name string, signature strin
 
 	if !verifySignature(statementFile, signature) {
 		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this file.")
+	}
+
+	return statementFile, nil
+}
+
+func (s *Service) GetStatementByName(ctx context.Context, name string) (*StatementFile, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Method", "GetStatementByName"),
+		zap.String("Username", claims.Username),
+	)
+
+	statementFile, err := getStatementFileByName(ctx, s.db, name)
+	if errors.Is(err, ErrStatementFileNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this statement file or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get statement file", zap.Error(err))
+		return nil, err
 	}
 
 	return statementFile, nil
