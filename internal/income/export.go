@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/10664kls/automatic-finance-api/internal/types"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -110,10 +111,10 @@ func exportCalculationToExcel(ctx context.Context, calculation *Calculation) (*b
 
 	f.SetActiveSheet(sheet)
 	switch calculation.Product {
-	case ProductPL, ProductSF:
+	case types.ProductPL, types.ProductSF:
 		setSummaryToExcelForProductPLAndSF(f, numberStyle, fontStyle, sheetName, calculation)
 
-	case ProductSA:
+	case types.ProductSA:
 		setSummaryToExcelForProductSA(f, numberStyle, fontStyle, sheetName, calculation)
 	}
 

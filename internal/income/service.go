@@ -16,6 +16,7 @@ import (
 	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/pager"
 	"github.com/10664kls/automatic-finance-api/internal/statement"
+	"github.com/10664kls/automatic-finance-api/internal/types"
 	"github.com/shopspring/decimal"
 	"github.com/xuri/excelize/v2"
 	"go.uber.org/zap"
@@ -471,7 +472,7 @@ func (s *Service) GetIncomeTransactionByBillNumber(ctx context.Context, in *GetT
 					return &Transaction{
 						BillNumber: row[1],
 						Noted:      row[2],
-						Date:       ddmmyyyy(date),
+						Date:       types.DDMMYYYY(date),
 						Amount:     incomeAmount,
 					}, nil
 				}
@@ -564,7 +565,7 @@ func (s *Service) listTransactionFromStatementFile(_ context.Context, txReq *Tra
 					if strings.Compare(date.Format("January-2006"), txReq.Month.String()) == 0 {
 						txs = append(txs, &Transaction{
 							Amount:     incomeAmount,
-							Date:       ddmmyyyy(date),
+							Date:       types.DDMMYYYY(date),
 							BillNumber: row[1],
 							Noted:      row[2],
 						})
@@ -673,7 +674,7 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 
 		transaction := Transaction{
 			Amount:     incomeAmount,
-			Date:       ddmmyyyy(date),
+			Date:       types.DDMMYYYY(date),
 			BillNumber: row[1],
 			Noted:      row[2],
 		}
@@ -718,7 +719,7 @@ func (s *Service) calculateIncomeFromStatementFile(ctx context.Context, cal *Cal
 	return calculation, nil
 }
 
-func newSourceIncome(m statMap, product product, period decimal.Decimal) *Source {
+func newSourceIncome(m statMap, product types.ProductType, period decimal.Decimal) *Source {
 	return &Source{
 		Allowance: Breakdown{
 			Total:          m.toListAllowances().Total,
@@ -746,9 +747,9 @@ type statCal struct {
 
 type statMap map[string]*statCal
 
-func (s statMap) totalIncome(product product) decimal.Decimal {
+func (s statMap) totalIncome(product types.ProductType) decimal.Decimal {
 	switch product {
-	case ProductSA:
+	case types.ProductSA:
 		raw, ok := s[SourceSalary.String()]
 		if !ok {
 			return decimal.Zero
@@ -760,7 +761,7 @@ func (s statMap) totalIncome(product product) decimal.Decimal {
 		}
 		return total
 
-	case ProductPL, ProductSF:
+	case types.ProductPL, types.ProductSF:
 		raw, ok := s[SourceSalary.String()]
 		if !ok {
 			return decimal.Zero
@@ -781,21 +782,21 @@ func (s statMap) basicSalaryFromInterview() decimal.Decimal {
 	return raw.Total
 }
 
-func (s statMap) totalBasicSalary(product product, period decimal.Decimal) decimal.Decimal {
+func (s statMap) totalBasicSalary(product types.ProductType, period decimal.Decimal) decimal.Decimal {
 	if period.IsZero() {
 		return decimal.Zero
 	}
 
 	switch product {
-	case ProductSA:
-		total := s.totalIncome(ProductSA)
+	case types.ProductSA:
+		total := s.totalIncome(types.ProductSA)
 		if total.IsZero() {
 			return decimal.Zero
 		}
 
 		return total.Div(period)
 
-	case ProductPL, ProductSF:
+	case types.ProductPL, types.ProductSF:
 		return s.basicSalary(product, period).Mul(s.toListMonthlySalaries().Length())
 	}
 
@@ -822,7 +823,7 @@ func (s statMap) totalOtherIncome(period decimal.Decimal) decimal.Decimal {
 		return decimal.Zero
 	}
 
-	o := s.totalIncome(ProductPL).Sub(s.totalBasicSalary(ProductPL, period))
+	o := s.totalIncome(types.ProductPL).Sub(s.totalBasicSalary(types.ProductPL, period))
 	if o.LessThan(decimal.Zero) {
 		return decimal.Zero
 	}
@@ -859,10 +860,10 @@ func (s statMap) averageOtherIncomeIn80Percent(period decimal.Decimal) decimal.D
 	return other.Mul(decimal.NewFromFloat(0.8))
 }
 
-func (s statMap) averageMonthlyIncome(product product, period decimal.Decimal) decimal.Decimal {
+func (s statMap) averageMonthlyIncome(product types.ProductType, period decimal.Decimal) decimal.Decimal {
 	switch product {
-	case ProductSA:
-		basic := s.basicSalary(ProductSA, period)
+	case types.ProductSA:
+		basic := s.basicSalary(types.ProductSA, period)
 		interview := s.basicSalaryFromInterview()
 		if interview.GreaterThan(decimal.Zero) && interview.LessThan(basic) {
 			return interview.
@@ -874,7 +875,7 @@ func (s statMap) averageMonthlyIncome(product product, period decimal.Decimal) d
 			Add(s.averageAllowance()).
 			Add(s.averageCommission(period))
 
-	case ProductPL, ProductSF:
+	case types.ProductPL, types.ProductSF:
 		otherIn80Percent := s.averageOtherIncomeIn80Percent(period)
 		basic := s.basicSalary(product, period)
 		interview := s.basicSalaryFromInterview()
@@ -888,7 +889,7 @@ func (s statMap) averageMonthlyIncome(product product, period decimal.Decimal) d
 	return decimal.Zero
 }
 
-func (s statMap) netIncomeMonthly(product product, exchangeRate decimal.Decimal, period decimal.Decimal) decimal.Decimal {
+func (s statMap) netIncomeMonthly(product types.ProductType, exchangeRate decimal.Decimal, period decimal.Decimal) decimal.Decimal {
 	if period.IsZero() {
 		return decimal.Zero
 	}
@@ -901,21 +902,21 @@ func (s statMap) netIncomeMonthly(product product, exchangeRate decimal.Decimal,
 	return monthlyIncome.Mul(exchangeRate)
 }
 
-func (s statMap) basicSalary(product product, period decimal.Decimal) decimal.Decimal {
+func (s statMap) basicSalary(product types.ProductType, period decimal.Decimal) decimal.Decimal {
 	switch product {
-	case ProductSA:
+	case types.ProductSA:
 		if period.IsZero() {
 			return decimal.Zero
 		}
 
-		total := s.totalIncome(ProductSA)
+		total := s.totalIncome(types.ProductSA)
 		if total.IsZero() {
 			return decimal.Zero
 		}
 
 		return total.Div(period)
 
-	case ProductPL, ProductSF:
+	case types.ProductPL, types.ProductSF:
 		return findMinAmountFromMonthlySalaries(s.toListMonthlySalaries().MonthlySalaries)
 	}
 
@@ -1134,9 +1135,9 @@ func getMonthWithYYYYMM(s string) string {
 }
 
 type CalculateReq struct {
-	Number            string  `json:"number"`
-	Product           product `json:"product"`
-	StatementFileName string  `json:"statementFileName"`
+	Number            string            `json:"number"`
+	Product           types.ProductType `json:"product"`
+	StatementFileName string            `json:"statementFileName"`
 }
 
 func (r *CalculateReq) Validate() error {
@@ -1149,7 +1150,7 @@ func (r *CalculateReq) Validate() error {
 		})
 	}
 
-	if r.Product == ProductUnSpecified {
+	if r.Product == types.ProductUnSpecified {
 		violations = append(violations, &edPb.BadRequest_FieldViolation{
 			Field:       "product",
 			Description: "Product must be a valid product.",

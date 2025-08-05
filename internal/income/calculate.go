@@ -10,6 +10,7 @@ import (
 
 	"github.com/10664kls/automatic-finance-api/internal/database"
 	"github.com/10664kls/automatic-finance-api/internal/pager"
+	"github.com/10664kls/automatic-finance-api/internal/types"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/shopspring/decimal"
 	edPb "google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -21,28 +22,28 @@ import (
 var ErrCalculationNotFound = fmt.Errorf("calculation not found")
 
 type Calculation struct {
-	ID                                int64           `json:"id"`
-	StatementFileName                 string          `json:"statementFileName"`
-	Number                            string          `json:"number"`
-	Product                           product         `json:"product"`
-	Account                           Account         `json:"account"`
-	ExchangeRate                      decimal.Decimal `json:"exchangeRate"`
-	BasicSalaryFromInterview          decimal.Decimal `json:"basicSalaryFromInterview"`
-	MonthlyAverageIncome              decimal.Decimal `json:"monthlyAverageIncome"`
-	MonthlyNetIncome                  decimal.Decimal `json:"monthlyNetIncome"`
-	MonthlyOtherIncome                decimal.Decimal `json:"monthlyOtherIncome"`
-	EightyPercentOfMonthlyOtherIncome decimal.Decimal `json:"eightyPercentOfMonthlyOtherIncome"`
-	TotalOtherIncome                  decimal.Decimal `json:"totalOtherIncome"`
-	TotalBasicSalary                  decimal.Decimal `json:"totalBasicSalary"`
-	TotalIncome                       decimal.Decimal `json:"totalIncome"`
-	PeriodInMonth                     decimal.Decimal `json:"periodInMonth"`
-	StartedAt                         time.Time       `json:"startedAt"`
-	EndedAt                           time.Time       `json:"endedAt"`
-	Status                            status          `json:"status"`
-	CreatedBy                         string          `json:"createdBy"`
-	UpdatedBy                         string          `json:"updatedBy"`
-	CreatedAt                         time.Time       `json:"createdAt"`
-	UpdatedAt                         time.Time       `json:"updatedAt"`
+	ID                                int64                `json:"id"`
+	StatementFileName                 string               `json:"statementFileName"`
+	Number                            string               `json:"number"`
+	Product                           types.ProductType    `json:"product"`
+	Account                           Account              `json:"account"`
+	ExchangeRate                      decimal.Decimal      `json:"exchangeRate"`
+	BasicSalaryFromInterview          decimal.Decimal      `json:"basicSalaryFromInterview"`
+	MonthlyAverageIncome              decimal.Decimal      `json:"monthlyAverageIncome"`
+	MonthlyNetIncome                  decimal.Decimal      `json:"monthlyNetIncome"`
+	MonthlyOtherIncome                decimal.Decimal      `json:"monthlyOtherIncome"`
+	EightyPercentOfMonthlyOtherIncome decimal.Decimal      `json:"eightyPercentOfMonthlyOtherIncome"`
+	TotalOtherIncome                  decimal.Decimal      `json:"totalOtherIncome"`
+	TotalBasicSalary                  decimal.Decimal      `json:"totalBasicSalary"`
+	TotalIncome                       decimal.Decimal      `json:"totalIncome"`
+	PeriodInMonth                     decimal.Decimal      `json:"periodInMonth"`
+	StartedAt                         time.Time            `json:"startedAt"`
+	EndedAt                           time.Time            `json:"endedAt"`
+	Status                            types.AnalysisStatus `json:"status"`
+	CreatedBy                         string               `json:"createdBy"`
+	UpdatedBy                         string               `json:"updatedBy"`
+	CreatedAt                         time.Time            `json:"createdAt"`
+	UpdatedAt                         time.Time            `json:"updatedAt"`
 
 	SalaryBreakdown     *SalaryBreakdown     `json:"salaryBreakdown"`
 	AllowanceBreakdown  *AllowanceBreakdown  `json:"allowanceBreakdown"`
@@ -68,13 +69,13 @@ func (c *Calculation) ReCalculate(by string, in *RecalculateReq) error {
 }
 
 func (c *Calculation) Complete(by string) {
-	c.Status = StatusCompleted
+	c.Status = types.StatusCompleted
 	c.UpdatedAt = time.Now()
 	c.UpdatedBy = by
 }
 
 func (c *Calculation) IsCompleted() bool {
-	return c.Status == StatusCompleted
+	return c.Status == types.StatusCompleted
 }
 
 func newSalaryBreakdown(months []MonthlySalary) *SalaryBreakdown {
@@ -95,7 +96,7 @@ func newCommissionBreakdown(commissions []Commission) *CommissionBreakdown {
 	}
 }
 
-func (c *Calculation) populate(product product, period, exchangeRate decimal.Decimal, incomes statMap) {
+func (c *Calculation) populate(product types.ProductType, period, exchangeRate decimal.Decimal, incomes statMap) {
 	c.Source = newSourceIncome(incomes, product, period)
 	c.BasicSalaryFromInterview = incomes.basicSalaryFromInterview()
 	c.AllowanceBreakdown = incomes.toListAllowances()
@@ -213,7 +214,7 @@ func (l *CommissionBreakdown) Bytes() []byte {
 	return b
 }
 
-func newCalculation(by string, number, statementFileName string, product product) *Calculation {
+func newCalculation(by string, number, statementFileName string, product types.ProductType) *Calculation {
 	now := time.Now()
 	return &Calculation{
 		Number:                            number,
@@ -228,7 +229,7 @@ func newCalculation(by string, number, statementFileName string, product product
 		TotalOtherIncome:                  decimal.Zero,
 		TotalBasicSalary:                  decimal.Zero,
 		TotalIncome:                       decimal.Zero,
-		Status:                            StatusPending,
+		Status:                            types.StatusPending,
 		CreatedBy:                         by,
 		CreatedAt:                         now,
 		UpdatedBy:                         by,
@@ -625,7 +626,7 @@ func getCalculation(ctx context.Context, db *sql.DB, in *CalculationQuery) (*Cal
 }
 
 type Transaction struct {
-	Date       ddmmyyyy        `json:"date"`
+	Date       types.DDMMYYYY  `json:"date"`
 	BillNumber string          `json:"billNumber"`
 	Noted      string          `json:"noted"`
 	Amount     decimal.Decimal `json:"amount"`
@@ -643,7 +644,7 @@ type TransactionReq struct {
 	Category source `json:"category"`
 
 	// Month in MMYYYY format
-	Month mmyyyy `json:"month"`
+	Month types.MMYYY `json:"month"`
 }
 
 func (r *TransactionReq) Validate() error {
