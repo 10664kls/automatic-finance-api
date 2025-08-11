@@ -18,6 +18,7 @@ import (
 	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/income"
 	"github.com/10664kls/automatic-finance-api/internal/middleware"
+	"github.com/10664kls/automatic-finance-api/internal/selfemployed"
 	"github.com/10664kls/automatic-finance-api/internal/server"
 	"github.com/10664kls/automatic-finance-api/internal/statement"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -110,6 +111,12 @@ func run() error {
 	}
 	zlog.Info("CIB service initialized")
 
+	selfemployedSvc, err := selfemployed.NewService(ctx, db, statementSvc, currencySvc, zlog)
+	if err != nil {
+		return fmt.Errorf("failed to create selfemployed service: %w", err)
+	}
+	zlog.Info("Selfemployed service initialized")
+
 	e := echo.New()
 	e.HideBanner = true
 	e.HTTPErrorHandler = httpErr
@@ -124,7 +131,7 @@ func run() error {
 		middleware.SetContextClaimsFromToken,
 	}
 
-	serve := must(server.NewServer(authSvc, currencySvc, incomeSvc, statementSvc, cibService))
+	serve := must(server.NewServer(authSvc, currencySvc, incomeSvc, statementSvc, cibService, selfemployedSvc))
 	if err := serve.Install(e, mdw...); err != nil {
 		return fmt.Errorf("failed to install auth service: %w", err)
 	}
