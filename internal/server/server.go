@@ -9,6 +9,7 @@ import (
 	"github.com/10664kls/automatic-finance-api/internal/cib"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
 	"github.com/10664kls/automatic-finance-api/internal/income"
+	"github.com/10664kls/automatic-finance-api/internal/selfemployed"
 	"github.com/10664kls/automatic-finance-api/internal/statement"
 	"github.com/labstack/echo/v4"
 	edPb "google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -18,14 +19,15 @@ import (
 )
 
 type Server struct {
-	auth      *auth.Auth
-	currency  *currency.Service
-	statement *statement.Service
-	income    *income.Service
-	cib       *cib.Service
+	auth         *auth.Auth
+	currency     *currency.Service
+	statement    *statement.Service
+	income       *income.Service
+	selfemployed *selfemployed.Service
+	cib          *cib.Service
 }
 
-func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Service, statement *statement.Service, cib *cib.Service) (*Server, error) {
+func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Service, statement *statement.Service, cib *cib.Service, selfemployed *selfemployed.Service) (*Server, error) {
 	if auth == nil {
 		return nil, errors.New("auth service is nil")
 	}
@@ -41,13 +43,17 @@ func NewServer(auth *auth.Auth, currency *currency.Service, income *income.Servi
 	if statement == nil {
 		return nil, errors.New("statement service is nil")
 	}
+	if selfemployed == nil {
+		return nil, errors.New("selfemployed service is nil")
+	}
 
 	return &Server{
-		auth:      auth,
-		currency:  currency,
-		income:    income,
-		statement: statement,
-		cib:       cib,
+		auth:         auth,
+		currency:     currency,
+		income:       income,
+		statement:    statement,
+		cib:          cib,
+		selfemployed: selfemployed,
 	}, nil
 }
 
@@ -102,6 +108,24 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.POST("/cib/calculations", s.calculateCIB, mws...)
 	v1.GET("/cib/calculations/:number/export-to-excel", s.exportCIBCalculationToExcelByNumber, mws...)
 	v1.GET("/cib/calculations/export-to-excel", s.exportCIBCalculationsToExcel, mws...)
+
+	v1.POST("/selfemployed/calculations", s.calculateSelfEmployedIncome, mws...)
+	v1.GET("/selfemployed/calculations", s.listSelfEmployedIncomeCalculations, mws...)
+	v1.GET("/selfemployed/calculations/:number", s.getSelfEmployedIncomeCalculationByNumber, mws...)
+	v1.PUT("/selfemployed/calculations/:number", s.recalculateSelfEmployedIncome, mws...)
+	v1.PATCH("/selfemployed/calculations/:number/complete", s.completeSelfEmployedIncomeCalculationByNumber, mws...)
+	v1.POST("/selfemployed/calculations/:number/transactions", s.listSelfEmployedIncomeTransactions, mws...)
+	v1.GET("/selfemployed/calculations/:number/transactions/:billNumber", s.getSelfEmployedIncomeTransactionByBillNumber, mws...)
+
+	v1.GET("/selfemployed/wordlists", s.listSelfEmployedWordlists, mws...)
+	v1.GET("/selfemployed/wordlists/:id", s.getSelfEmployedWordlistByID, mws...)
+	v1.POST("/selfemployed/wordlists", s.createSelfEmployedWordlist, mws...)
+	v1.PUT("/selfemployed/wordlists/:id", s.updateSelfEmployedWordlist, mws...)
+
+	v1.GET("/selfemployed/businesses", s.listSelfEmployedBusinesses, mws...)
+	v1.GET("/selfemployed/businesses/:id", s.getSelfEmployedBusinessByID, mws...)
+	v1.POST("/selfemployed/businesses", s.createSelfEmployedBusiness, mws...)
+	v1.PUT("/selfemployed/businesses/:id", s.updateSelfEmployedBusiness, mws...)
 
 	return nil
 }
@@ -699,4 +723,226 @@ func (s *Server) exportCIBCalculationsToExcel(c echo.Context) error {
 	c.Response().Header().Set("Content-Disposition", `attachment; filename="CIB_calculations.xlsx"`)
 
 	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
+}
+
+func (s *Server) calculateSelfEmployedIncome(c echo.Context) error {
+	req := new(selfemployed.CalculateReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	calculation, err := s.selfemployed.CalculateIncome(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) getSelfEmployedIncomeCalculationByNumber(c echo.Context) error {
+	calculation, err := s.selfemployed.GetCalculationByNumber(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) listSelfEmployedIncomeCalculations(c echo.Context) error {
+	req := new(selfemployed.CalculationQuery)
+	if err := c.Bind(req); err != nil {
+		return badParam()
+	}
+
+	calculations, err := s.selfemployed.ListCalculations(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, calculations)
+}
+
+func (s *Server) recalculateSelfEmployedIncome(c echo.Context) error {
+	req := new(selfemployed.RecalculateReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	calculation, err := s.selfemployed.ReCalculateIncome(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) completeSelfEmployedIncomeCalculationByNumber(c echo.Context) error {
+	calculation, err := s.selfemployed.CompleteCalculation(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"calculation": calculation,
+	})
+}
+
+func (s *Server) listSelfEmployedIncomeTransactions(c echo.Context) error {
+	req := new(selfemployed.TransactionQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	transactions, err := s.selfemployed.ListIncomeTransactionsByNumber(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, transactions)
+}
+
+func (s *Server) getSelfEmployedIncomeTransactionByBillNumber(c echo.Context) error {
+	req := new(selfemployed.GetTransactionQuery)
+	if err := c.Bind(req); err != nil {
+		return badParam()
+	}
+
+	transaction, err := s.selfemployed.GetIncomeTransactionByBillNumber(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"transaction": transaction,
+	})
+}
+
+func (s *Server) listSelfEmployedWordlists(c echo.Context) error {
+	req := new(selfemployed.WordlistQuery)
+	if err := c.Bind(req); err != nil {
+		return badParam()
+	}
+
+	wordlists, err := s.selfemployed.ListWordlists(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, wordlists)
+}
+
+func (s *Server) getSelfEmployedWordlistByID(c echo.Context) error {
+	req := new(selfemployed.WordlistReq)
+	if err := c.Bind(req); err != nil {
+		return badParam()
+	}
+
+	wordlist, err := s.selfemployed.GetWordlistByID(c.Request().Context(), req.ID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"wordlist": wordlist,
+	})
+}
+
+func (s *Server) createSelfEmployedWordlist(c echo.Context) error {
+	req := new(selfemployed.WordlistReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	wordlist, err := s.selfemployed.CreateWordlist(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"wordlist": wordlist,
+	})
+}
+
+func (s *Server) updateSelfEmployedWordlist(c echo.Context) error {
+	req := new(selfemployed.WordlistReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	wordlist, err := s.selfemployed.UpdateWordlist(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"wordlist": wordlist,
+	})
+}
+
+func (s *Server) listSelfEmployedBusinesses(c echo.Context) error {
+	req := new(selfemployed.BusinessQuery)
+	if err := c.Bind(req); err != nil {
+		return badParam()
+	}
+
+	businesses, err := s.selfemployed.ListBusinesses(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, businesses)
+}
+
+func (s *Server) getSelfEmployedBusinessByID(c echo.Context) error {
+	req := new(selfemployed.BusinessReq)
+	if err := c.Bind(req); err != nil {
+		return badParam()
+	}
+
+	business, err := s.selfemployed.GetBusinessByID(c.Request().Context(), req.ID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"business": business,
+	})
+}
+
+func (s *Server) createSelfEmployedBusiness(c echo.Context) error {
+	req := new(selfemployed.BusinessReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	business, err := s.selfemployed.CreateBusiness(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"business": business,
+	})
+}
+
+func (s *Server) updateSelfEmployedBusiness(c echo.Context) error {
+	req := new(selfemployed.BusinessReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	business, err := s.selfemployed.UpdateBusiness(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"business": business,
+	})
 }
