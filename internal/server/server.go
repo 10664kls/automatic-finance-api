@@ -116,6 +116,8 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.PATCH("/selfemployed/calculations/:number/complete", s.completeSelfEmployedIncomeCalculationByNumber, mws...)
 	v1.POST("/selfemployed/calculations/:number/transactions", s.listSelfEmployedIncomeTransactions, mws...)
 	v1.GET("/selfemployed/calculations/:number/transactions/:billNumber", s.getSelfEmployedIncomeTransactionByBillNumber, mws...)
+	v1.GET("/selfemployed/calculations/:number/export-to-excel", s.exportSelfEmployedIncomeCalculationToExcelByNumber, mws...)
+	v1.GET("/selfemployed/calculations/export-to-excel", s.exportSelfEmployedIncomeCalculationsToExcel, mws...)
 
 	v1.GET("/selfemployed/wordlists", s.listSelfEmployedWordlists, mws...)
 	v1.GET("/selfemployed/wordlists/:id", s.getSelfEmployedWordlistByID, mws...)
@@ -945,4 +947,33 @@ func (s *Server) updateSelfEmployedBusiness(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{
 		"business": business,
 	})
+}
+
+func (s *Server) exportSelfEmployedIncomeCalculationToExcelByNumber(c echo.Context) error {
+	buf, err := s.selfemployed.ExportCalculationToExcelByNumber(c.Request().Context(), c.Param("number"))
+	if err != nil {
+		return err
+	}
+
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="Income_calculation_selfemployed_%s.xlsx"`, c.Param("number")))
+
+	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
+}
+
+func (s *Server) exportSelfEmployedIncomeCalculationsToExcel(c echo.Context) error {
+	req := new(selfemployed.BatchGetCalculationsQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	buf, err := s.selfemployed.ExportCalculationsToExcel(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="Income_calculations_selfemployed.xlsx"`)
+
+	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.Bytes())
 }

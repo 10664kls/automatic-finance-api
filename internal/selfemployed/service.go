@@ -1,10 +1,12 @@
 package selfemployed
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"strconv"
+	"sync"
 
 	"github.com/10664kls/automatic-finance-api/internal/auth"
 	"github.com/10664kls/automatic-finance-api/internal/currency"
@@ -20,6 +22,7 @@ type Service struct {
 	db        *sql.DB
 	statement *statement.Service
 	currency  *currency.Service
+	mu        *sync.Mutex
 	zlog      *zap.Logger
 }
 
@@ -42,6 +45,7 @@ func NewService(_ context.Context, db *sql.DB, statement *statement.Service, cur
 		statement: statement,
 		currency:  currency,
 		zlog:      zlog,
+		mu:        new(sync.Mutex),
 	}, nil
 }
 
@@ -620,4 +624,51 @@ func (s *Service) UpdateWordlist(ctx context.Context, req *WordlistReq) (*Wordli
 	}
 
 	return wordlist, nil
+}
+
+func (s *Service) ExportCalculationsToExcel(ctx context.Context, in *BatchGetCalculationsQuery) (*bytes.Buffer, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Service", "selfemployed"),
+		zap.String("Method", "ExportCalculationsToExcel"),
+		zap.String("Username", claims.Username),
+		zap.Any("req", in),
+	)
+
+	byt, err := s.exportCalculationsToExcel(ctx, in)
+	if err != nil {
+		zlog.Error("failed to export calculations to excel", zap.Error(err))
+		return nil, err
+	}
+
+	return byt, nil
+}
+
+func (s *Service) ExportCalculationToExcelByNumber(ctx context.Context, number string) (*bytes.Buffer, error) {
+	claims := auth.ClaimsFromContext(ctx)
+	zlog := s.zlog.With(
+		zap.String("Service", "selfemployed"),
+		zap.String("Method", "ExportCalculationToExcelByNumber"),
+		zap.String("Username", claims.Username),
+		zap.String("Number", number),
+	)
+
+	calculation, err := getCalculation(ctx, s.db, &CalculationQuery{
+		Number: number,
+	})
+	if errors.Is(err, ErrCalculationNotFound) {
+		return nil, rpcstatus.Error(codes.PermissionDenied, "You are not allowed to this calculation or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get calculation by number", zap.Error(err))
+		return nil, err
+	}
+
+	buf, err := exportCalculationToExcel(calculation)
+	if err != nil {
+		zlog.Error("failed to export calculation to excel", zap.Error(err))
+		return nil, err
+	}
+
+	return buf, nil
 }

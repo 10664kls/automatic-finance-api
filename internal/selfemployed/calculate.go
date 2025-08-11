@@ -1138,3 +1138,147 @@ func getCalculation(ctx context.Context, db *sql.DB, in *CalculationQuery) (*Cal
 
 	return calculations[0], nil
 }
+
+type BatchGetCalculationsQuery struct {
+	ID                 int64     `query:"id"`
+	BusinessTypeID     string    `query:"businessTypeID"`
+	Product            string    `query:"product"`
+	Number             string    `query:"number"`
+	AccountDisplayName string    `query:"accountDisplayName"`
+	CreatedAfter       time.Time `query:"createdAfter"`
+	CreatedBefore      time.Time `query:"createdBefore"`
+
+	nextID int64
+}
+
+func (q *BatchGetCalculationsQuery) ToSQL() (string, []any, error) {
+	and := sq.And{}
+	if q.ID != 0 {
+		and = append(and, sq.Eq{"s.id": q.ID})
+	}
+	if q.Product != "" {
+		and = append(and, sq.Eq{"product": q.Product})
+	}
+	if q.Number != "" {
+		and = append(and, sq.Eq{"number": q.Number})
+	}
+	if q.AccountDisplayName != "" {
+		and = append(and, sq.Expr("account_display_name LIKE ?", "%"+q.AccountDisplayName+"%"))
+	}
+	if q.BusinessTypeID != "" {
+		and = append(and, sq.Eq{"business_type_id": q.BusinessTypeID})
+	}
+
+	if !q.CreatedAfter.IsZero() {
+		and = append(and, sq.GtOrEq{"s.created_at": q.CreatedAfter})
+	}
+
+	if !q.CreatedBefore.IsZero() {
+		and = append(and, sq.LtOrEq{"s.created_at": q.CreatedBefore})
+	}
+
+	if q.nextID > 0 {
+		and = append(and, sq.Lt{"s.id": q.nextID})
+	}
+
+	return and.ToSql()
+}
+
+func batchGetCalculations(ctx context.Context, db *sql.DB, batchSize int, nextID int64, in *BatchGetCalculationsQuery) ([]*Calculation, error) {
+	id := fmt.Sprintf("TOP %d s.id", batchSize)
+	in.nextID = nextID
+	pred, args, err := in.ToSQL()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	q, args := sq.Select(
+		id,
+		"number",
+		"statement_file_name",
+		"b.id",
+		"b.name",
+		"product",
+		"account_currency",
+		"account_number",
+		"account_display_name",
+		"period_in_month",
+		"started_at",
+		"ended_at",
+		"exchange_rate",
+		"s.margin_percentage",
+		"total_income",
+		"monthly_average_income",
+		"monthly_average_margin",
+		"monthly_net_income",
+		"source_income",
+		"status",
+		"s.created_by",
+		"s.created_at",
+		"s.updated_by",
+		"s.updated_at",
+	).
+		From("self_employed_analysis AS s").
+		LeftJoin("business_type AS b ON s.business_type_id = b.id").
+		Where(pred, args...).
+		OrderBy("s.created_at DESC").
+		PlaceholderFormat(sq.AtP).
+		MustSql()
+
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list calculations: %w", err)
+	}
+	defer rows.Close()
+
+	calculations := make([]*Calculation, 0)
+	for rows.Next() {
+		var byt []byte
+		c := new(Calculation)
+		err := rows.Scan(
+			&c.ID,
+			&c.Number,
+			&c.StatementFileName,
+			&c.BusinessType.ID,
+			&c.BusinessType.Name,
+			&c.Product,
+			&c.Account.Currency,
+			&c.Account.Number,
+			&c.Account.DisplayName,
+			&c.PeriodInMonth,
+			&c.StartedAt,
+			&c.EndedAt,
+			&c.ExchangeRate,
+			&c.MarginPercentage,
+			&c.TotalIncome,
+			&c.MonthlyAverageIncome,
+			&c.MonthlyAverageByMargin,
+			&c.MonthlyNetIncome,
+			&byt,
+			&c.Status,
+			&c.CreatedBy,
+			&c.CreatedAt,
+			&c.UpdatedBy,
+			&c.UpdatedAt,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCalculationNotFound
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan calculation: %w", err)
+		}
+
+		monthlyBreakdown := new(MonthlyBreakdown)
+		if err := json.Unmarshal(byt, monthlyBreakdown); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal monthly breakdown: %w", err)
+		}
+
+		c.MonthlyBreakdown = monthlyBreakdown
+		calculations = append(calculations, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over calculations: %w", err)
+	}
+
+	return calculations, nil
+}
