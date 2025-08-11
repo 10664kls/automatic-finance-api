@@ -131,7 +131,7 @@ func (y DDMMYYYY) Time() time.Time {
 	return time.Time(y)
 }
 
-func ParseYYYYMM(layout, s string) (MMYYY, error) {
+func ParseMMYYYY(layout, s string) (MMYYY, error) {
 	t, err := time.Parse(layout, s)
 	if err != nil {
 		return MMYYY{}, err
