@@ -79,7 +79,7 @@ func (s *Service) exportCalculationsToExcel(ctx context.Context, in *BatchGetCal
 	return byt, nil
 }
 
-func exportCalculationToExcel(ctx context.Context, calculation *Calculation) (*bytes.Buffer, error) {
+func exportCalculationToExcel(_ context.Context, calculation *Calculation) (*bytes.Buffer, error) {
 	f := excelize.NewFile()
 	defer f.Close()
 
