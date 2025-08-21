@@ -787,20 +787,11 @@ func (s statMap) totalBasicSalary(product types.ProductType, period decimal.Deci
 		return decimal.Zero
 	}
 
-	switch product {
-	case types.ProductSA:
-		total := s.totalIncome(types.ProductSA)
-		if total.IsZero() {
-			return decimal.Zero
-		}
-
-		return total.Div(period)
-
-	case types.ProductPL, types.ProductSF:
-		return s.basicSalary(product, period).Mul(s.toListMonthlySalaries().Length())
+	if s.basicSalaryFromInterview().LessThan(s.basicSalary(product, period)) && s.basicSalaryFromInterview().GreaterThan(decimal.Zero) {
+		return s.basicSalaryFromInterview().Mul(period)
 	}
 
-	return decimal.Zero
+	return s.basicSalary(product, period).Mul(s.toListMonthlySalaries().Length())
 }
 
 func findMinAmountFromMonthlySalaries(ms []MonthlySalary) decimal.Decimal {
